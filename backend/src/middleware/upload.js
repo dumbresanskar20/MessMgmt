@@ -1,25 +1,13 @@
 const multer = require('multer');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('../config/cloudinary');
 
-// Configure Multer Cloudinary storage engine
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'mess-management/menu-items',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-    public_id: (req, file) => {
-      const fileName = file.originalname.split('.')[0].replace(/[^a-zA-Z0-9]/g, '_');
-      return `item_${Date.now()}_${fileName}`;
-    },
-  },
-});
+// Multer memory storage engine to hold buffers prior to Cloudinary / Data URI processing
+const storage = multer.memoryStorage();
 
-// Configure Multer instance with 2MB file size limit and image-only filter
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 2 * 1024 * 1024, // 2MB limit
+    fileSize: 5 * 1024 * 1024, // 5MB limit
   },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
@@ -30,17 +18,34 @@ const upload = multer({
   },
 });
 
-// Middleware wrapper to handle Multer / Cloudinary upload errors cleanly
+// Helper function to stream buffer to Cloudinary
+const uploadToCloudinary = (buffer) => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: 'mess-management/menu-items',
+        resource_type: 'image',
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+    stream.end(buffer);
+  });
+};
+
+// Middleware wrapper: Tries Cloudinary upload first, falls back seamlessly to Data URI if Cloudinary fails
 const handleImageUpload = (fieldName) => {
   return (req, res, next) => {
     const singleUpload = upload.single(fieldName);
 
-    singleUpload(req, res, (err) => {
+    singleUpload(req, res, async (err) => {
       if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
           return res.status(400).json({
             success: false,
-            message: 'Image upload failed — file exceeds the 2MB size limit.',
+            message: 'Image upload failed — file exceeds the 5MB size limit.',
           });
         }
         return res.status(400).json({
@@ -50,10 +55,30 @@ const handleImageUpload = (fieldName) => {
       } else if (err) {
         return res.status(400).json({
           success: false,
-          message: 'Image upload failed — please try a smaller file or check your connection.',
-          error: err.message,
+          message: `Image upload error: ${err.message}`,
         });
       }
+
+      // Process uploaded file buffer if present
+      if (req.file && req.file.buffer) {
+        try {
+          const cloudResult = await uploadToCloudinary(req.file.buffer);
+          req.file.path = cloudResult.secure_url;
+          req.file.secure_url = cloudResult.secure_url;
+          req.file.filename = cloudResult.public_id;
+          req.file.public_id = cloudResult.public_id;
+          console.log(`[Cloudinary] Successfully uploaded image: ${cloudResult.secure_url}`);
+        } catch (cloudErr) {
+          console.warn(`[Cloudinary Warning] Upload to Cloudinary API failed (${cloudErr.message}). Using Data URI fallback.`);
+          const base64Data = req.file.buffer.toString('base64');
+          const dataUri = `data:${req.file.mimetype};base64,${base64Data}`;
+          req.file.path = dataUri;
+          req.file.secure_url = dataUri;
+          req.file.filename = null;
+          req.file.public_id = null;
+        }
+      }
+
       next();
     });
   };

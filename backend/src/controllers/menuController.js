@@ -151,7 +151,7 @@ const createMenuItem = async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating menu item:', error);
-    return res.status(500).json({ success: false, message: 'Image upload failed — please check your file or Cloudinary settings.' });
+    return res.status(500).json({ success: false, message: error.message || 'Error creating menu item.' });
   }
 };
 
