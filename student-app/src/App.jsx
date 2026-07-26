@@ -21,7 +21,7 @@ export default function App() {
     redirectNotice,
   } = useCart();
 
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, logout, openAuthModal } = useAuth();
 
   const [menuItems, setMenuItems] = useState([]);
   const [loadingMenu, setLoadingMenu] = useState(true);
@@ -31,6 +31,17 @@ export default function App() {
   const [successToken, setSuccessToken] = useState(null);
   const [successOrder, setSuccessOrder] = useState(null);
   const [ordersModalOpen, setOrdersModalOpen] = useState(false);
+
+  // Check for reset_token in URL query parameters on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tokenVal = params.get('reset_token') || params.get('token');
+      if (tokenVal) {
+        openAuthModal(false, 'reset-password', tokenVal);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetchMenuItems();

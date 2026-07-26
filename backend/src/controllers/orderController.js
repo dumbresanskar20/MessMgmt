@@ -197,10 +197,14 @@ const verifyPaymentAndFulfill = async (req, res) => {
 
     await order.populate('student_id', 'name roll_no email');
 
+    // Compute updated order counts for live kitchen update
+    const orderCounts = await computeKitchenOrderCounts(order.date);
+
     // Broadcast live Socket.IO event to Kitchen Screen
     const io = req.app.get('socketio');
     if (io) {
-      io.to('kitchen').emit('order:new', {
+      const socketPayload = {
+        _id: order._id,
         id: order._id,
         token_number: order.token_number,
         meal_type: order.meal_type,
@@ -210,7 +214,11 @@ const verifyPaymentAndFulfill = async (req, res) => {
         total_amount: order.total_amount,
         order_status: order.order_status,
         created_at: order.created_at,
-      });
+        orderCounts,
+      };
+
+      io.to('kitchen').emit('order:new', socketPayload);
+      io.to('kitchen').emit('order-counts-updated', socketPayload);
     }
 
     return res.status(200).json({
@@ -222,6 +230,72 @@ const verifyPaymentAndFulfill = async (req, res) => {
   } catch (error) {
     console.error('Payment verification error:', error);
     return res.status(500).json({ success: false, message: 'Error verifying payment.' });
+  }
+};
+
+// Compute Kitchen Order Counts Aggregation (Total Orders Today vs Active Tokens)
+const computeKitchenOrderCounts = async (targetDate) => {
+  const dateStr = targetDate || new Date().toISOString().split('T')[0];
+  const pipeline = [
+    {
+      $match: {
+        date: dateStr,
+        payment_status: 'paid',
+      },
+    },
+    {
+      $group: {
+        _id: '$meal_type',
+        total_orders_today: { $sum: 1 },
+        active_tokens: {
+          $sum: {
+            $cond: [
+              { $in: ['$order_status', ['placed', 'preparing', 'ready']] },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+  ];
+
+  const results = await Order.aggregate(pipeline);
+
+  const counts = {
+    breakfast: { total_orders_today: 0, active_tokens: 0 },
+    lunch: { total_orders_today: 0, active_tokens: 0 },
+    snacks: { total_orders_today: 0, active_tokens: 0 },
+    dinner: { total_orders_today: 0, active_tokens: 0 },
+    combined: { total_orders_today: 0, active_tokens: 0 },
+  };
+
+  results.forEach((row) => {
+    const meal = (row._id || '').toLowerCase();
+    if (counts[meal]) {
+      counts[meal].total_orders_today = row.total_orders_today;
+      counts[meal].active_tokens = row.active_tokens;
+    }
+    counts.combined.total_orders_today += row.total_orders_today;
+    counts.combined.active_tokens += row.active_tokens;
+  });
+
+  return counts;
+};
+
+// Get Kitchen Order Counts API Endpoint
+const getKitchenOrderCounts = async (req, res) => {
+  try {
+    const dateStr = req.query.date || new Date().toISOString().split('T')[0];
+    const orderCounts = await computeKitchenOrderCounts(dateStr);
+    return res.status(200).json({
+      success: true,
+      date: dateStr,
+      orderCounts,
+    });
+  } catch (error) {
+    console.error('Error fetching kitchen order counts:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching order counts.' });
   }
 };
 
@@ -255,9 +329,17 @@ const razorpayWebhook = async (req, res) => {
         order.daily_sequence = sequenceNumber;
         await order.save();
 
+        const orderCounts = await computeKitchenOrderCounts(order.date);
         const io = req.app.get('socketio');
         if (io) {
           io.to('kitchen').emit('order:new', order);
+          io.to('kitchen').emit('order-counts-updated', {
+            orderId: order._id,
+            token_number: order.token_number,
+            meal_type: order.meal_type,
+            order_status: order.order_status,
+            orderCounts,
+          });
         }
       }
     }
@@ -274,13 +356,11 @@ const getStudentOrders = async (req, res) => {
     const retentionDays = parseInt(process.env.ORDER_RETENTION_DAYS, 10) || 60;
     const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
 
-    // Filter created_at >= cutoffDate directly in the MongoDB query
     const orders = await Order.find({
       student_id: req.studentId,
       payment_status: 'paid',
       created_at: { $gte: cutoffDate },
-    })
-      .sort({ created_at: -1 });
+    }).sort({ created_at: -1 });
 
     return res.status(200).json({
       success: true,
@@ -310,7 +390,7 @@ const getKitchenOrders = async (req, res) => {
 
     const orders = await Order.find(filter)
       .populate('student_id', 'name roll_no email')
-      .sort({ created_at: -1 });
+      .sort({ created_at: 1 }); // Sort ascending by time for token list
 
     return res.status(200).json({
       success: true,
@@ -339,15 +419,25 @@ const updateOrderStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found.' });
     }
 
+    const orderCounts = await computeKitchenOrderCounts(order.date);
+
     // Broadcast status change via Socket.IO
     const io = req.app.get('socketio');
     if (io) {
-      io.to('kitchen').emit('order:status_updated', {
+      const updatePayload = {
         orderId: order._id,
+        id: order._id,
         token_number: order.token_number,
+        meal_type: order.meal_type,
         order_status: order.order_status,
+        student_name: order.student_id?.name || 'Student',
         updated_at: new Date(),
-      });
+        orderCounts,
+      };
+
+      io.to('kitchen').emit('order-counts-updated', updatePayload);
+      io.to('kitchen').emit('order:status_updated', updatePayload);
+
       // Broadcast to student room
       io.to(`student:${order.student_id?._id || order.student_id}`).emit('student:order_updated', {
         orderId: order._id,
@@ -360,6 +450,7 @@ const updateOrderStatus = async (req, res) => {
       success: true,
       message: `Order status updated to '${order_status}'`,
       order,
+      orderCounts,
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Error updating order status.' });
@@ -372,5 +463,6 @@ module.exports = {
   razorpayWebhook,
   getStudentOrders,
   getKitchenOrders,
+  getKitchenOrderCounts,
   updateOrderStatus,
 };

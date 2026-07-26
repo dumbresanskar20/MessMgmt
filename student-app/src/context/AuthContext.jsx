@@ -10,6 +10,8 @@ export const AuthProvider = ({ children }) => {
   });
   const [token, setToken] = useState(() => localStorage.getItem('student_token') || null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState('login');
+  const [resetToken, setResetToken] = useState(null);
   const [pendingCheckout, setPendingCheckout] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -86,6 +88,35 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const forgotPassword = async (email) => {
+    setLoading(true);
+    try {
+      const response = await api.post('/auth/student/forgot-password', { email });
+      return { success: true, message: response.data.message };
+    } catch (error) {
+      const msg = error.response?.data?.message || 'Failed to request password reset. Please try again.';
+      return { success: false, message: msg };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetPassword = async (resetToken, newPassword) => {
+    setLoading(true);
+    try {
+      const response = await api.post('/auth/student/reset-password', {
+        token: resetToken,
+        password: newPassword,
+      });
+      return { success: true, message: response.data.message };
+    } catch (error) {
+      const msg = error.response?.data?.message || 'Password reset failed. Token may have expired.';
+      return { success: false, message: msg };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = () => {
     setStudent(null);
     setToken(null);
@@ -93,8 +124,10 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('student_user');
   };
 
-  const openAuthModal = (forCheckout = false) => {
+  const openAuthModal = (forCheckout = false, mode = 'login', tokenVal = null) => {
     setPendingCheckout(forCheckout);
+    setAuthModalMode(mode);
+    if (tokenVal) setResetToken(tokenVal);
     setAuthModalOpen(true);
   };
 
@@ -110,11 +143,17 @@ export const AuthProvider = ({ children }) => {
         token,
         isAuthenticated: !!token && !!student,
         authModalOpen,
+        authModalMode,
+        resetToken,
+        setAuthModalMode,
+        setResetToken,
         pendingCheckout,
         loading,
         login,
         signup,
         verifyOtp,
+        forgotPassword,
+        resetPassword,
         logout,
         openAuthModal,
         closeAuthModal,

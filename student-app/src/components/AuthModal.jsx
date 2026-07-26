@@ -1,12 +1,30 @@
-import React, { useState } from 'react';
-import { X, Mail, Lock, User, Contact, ArrowRight, KeyRound, AlertCircle, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Mail, Lock, User, Contact, ArrowRight, KeyRound, AlertCircle, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function AuthModal() {
-  const { authModalOpen, closeAuthModal, pendingCheckout, login, signup, verifyOtp, loading } = useAuth();
+  const {
+    authModalOpen,
+    authModalMode,
+    resetToken: contextResetToken,
+    closeAuthModal,
+    pendingCheckout,
+    login,
+    signup,
+    verifyOtp,
+    forgotPassword,
+    resetPassword,
+    loading,
+  } = useAuth();
   
-  const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'otp'
+  const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'otp' | 'forgot-password' | 'reset-password'
   const [otpEmail, setOtpEmail] = useState('');
+
+  // Password visibility toggle states
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showConfirmResetPassword, setShowConfirmResetPassword] = useState(false);
 
   // Form states
   const [loginEmail, setLoginEmail] = useState('');
@@ -19,8 +37,19 @@ export default function AuthModal() {
 
   const [otpCode, setOtpCode] = useState('');
   
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Sync mode from context when modal opens or mode changes
+  useEffect(() => {
+    if (authModalMode) {
+      setMode(authModalMode);
+    }
+  }, [authModalMode, authModalOpen]);
 
   if (!authModalOpen) return null;
 
@@ -79,6 +108,44 @@ export default function AuthModal() {
     }
   };
 
+  const handleForgotPasswordSubmit = async (e) => {
+    e.preventDefault();
+    resetFormAlerts();
+
+    const res = await forgotPassword(forgotEmail);
+    if (res.success) {
+      setSuccessMsg(res.message);
+    } else {
+      setErrorMsg(res.message);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault();
+    resetFormAlerts();
+
+    if (newPassword !== confirmPassword) {
+      setErrorMsg('Passwords do not match. Please re-enter.');
+      return;
+    }
+
+    if (!contextResetToken) {
+      setErrorMsg('Missing or invalid reset token.');
+      return;
+    }
+
+    const res = await resetPassword(contextResetToken, newPassword);
+    if (res.success) {
+      setSuccessMsg(res.message);
+      setTimeout(() => {
+        setMode('login');
+        setLoginPassword('');
+      }, 2000);
+    } else {
+      setErrorMsg(res.message);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in">
       <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-amber-100 p-6 sm:p-8">
@@ -101,6 +168,8 @@ export default function AuthModal() {
             {mode === 'login' && 'Welcome Back!'}
             {mode === 'signup' && 'Create Student Account'}
             {mode === 'otp' && 'Verify Your Email'}
+            {mode === 'forgot-password' && 'Reset Your Password'}
+            {mode === 'reset-password' && 'Set New Password'}
           </h2>
 
           <p className="text-xs text-stone-500 mt-1 font-medium">
@@ -108,6 +177,10 @@ export default function AuthModal() {
               <span className="text-brand-orange font-bold flex items-center justify-center gap-1">
                 <Sparkles className="w-3.5 h-3.5" /> Please sign in to finalize your meal order
               </span>
+            ) : mode === 'forgot-password' ? (
+              'Enter your registered email to receive a password reset link'
+            ) : mode === 'reset-password' ? (
+              'Enter and confirm your new password below'
             ) : (
               'Sign in to order hot meals with digital token numbers'
             )}
@@ -130,7 +203,7 @@ export default function AuthModal() {
         )}
 
         {/* Mode Switch Tabs */}
-        {mode !== 'otp' && (
+        {(mode === 'login' || mode === 'signup') && (
           <div className="flex bg-stone-100 p-1 rounded-2xl mb-6">
             <button
               onClick={() => { setMode('login'); resetFormAlerts(); }}
@@ -170,17 +243,34 @@ export default function AuthModal() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-stone-700 mb-1">Password</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-stone-700">Password</label>
+                <button
+                  type="button"
+                  onClick={() => { setMode('forgot-password'); resetFormAlerts(); setForgotEmail(loginEmail); }}
+                  className="text-xs font-bold text-brand-orange hover:underline focus:outline-none"
+                >
+                  Forgot Password?
+                </button>
+              </div>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-400" />
                 <input
-                  type="password"
+                  type={showLoginPassword ? 'text' : 'password'}
                   required
                   placeholder="••••••••"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white transition-all outline-none font-medium"
+                  className="w-full pl-10 pr-11 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white transition-all outline-none font-medium"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPassword(!showLoginPassword)}
+                  className="absolute right-3.5 top-3 text-stone-400 hover:text-stone-700 transition-colors"
+                  aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
@@ -248,14 +338,22 @@ export default function AuthModal() {
               <div className="relative">
                 <Lock className="absolute left-3 top-2.5 w-4 h-4 text-stone-400" />
                 <input
-                  type="password"
+                  type={showSignupPassword ? 'text' : 'password'}
                   required
                   minLength={6}
                   placeholder="Min 6 characters"
                   value={signupPassword}
                   onChange={(e) => setSignupPassword(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-orange focus:bg-white outline-none font-medium"
+                  className="w-full pl-9 pr-10 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-orange focus:bg-white outline-none font-medium"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowSignupPassword(!showSignupPassword)}
+                  className="absolute right-3 top-2 text-stone-400 hover:text-stone-700 transition-colors"
+                  aria-label={showSignupPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showSignupPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
               </div>
             </div>
 
@@ -266,6 +364,105 @@ export default function AuthModal() {
             >
               {loading ? 'Creating Account...' : 'Continue to OTP Verification'}
               <ArrowRight className="w-4 h-4" />
+            </button>
+          </form>
+        )}
+
+        {/* Form: FORGOT PASSWORD */}
+        {mode === 'forgot-password' && (
+          <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">Registered Student Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-400" />
+                <input
+                  type="email"
+                  required
+                  placeholder="student@college.edu"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white outline-none font-medium"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-gradient-to-r from-brand-orange to-amber-600 hover:from-amber-600 hover:to-brand-orange text-white font-bold rounded-2xl text-sm shadow-warm transition-all flex items-center justify-center gap-2"
+            >
+              {loading ? 'Sending Link...' : 'Send Password Reset Link'}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setMode('login'); resetFormAlerts(); }}
+              className="w-full text-center text-xs font-bold text-stone-500 hover:text-brand-dark py-1 transition-colors"
+            >
+              ← Back to Sign In
+            </button>
+          </form>
+        )}
+
+        {/* Form: RESET PASSWORD (FROM EMAIL TOKEN) */}
+        {mode === 'reset-password' && (
+          <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">New Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-400" />
+                <input
+                  type={showResetPassword ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  placeholder="At least 6 characters"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full pl-10 pr-11 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white outline-none font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowResetPassword(!showResetPassword)}
+                  className="absolute right-3.5 top-3 text-stone-400 hover:text-stone-700 transition-colors"
+                  aria-label={showResetPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">Confirm New Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-400" />
+                <input
+                  type={showConfirmResetPassword ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  placeholder="Re-enter new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full pl-10 pr-11 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white outline-none font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmResetPassword(!showConfirmResetPassword)}
+                  className="absolute right-3.5 top-3 text-stone-400 hover:text-stone-700 transition-colors"
+                  aria-label={showConfirmResetPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showConfirmResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl text-sm shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              {loading ? 'Updating Password...' : 'Set New Password'}
+              <Sparkles className="w-4 h-4" />
             </button>
           </form>
         )}

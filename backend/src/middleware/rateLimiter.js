@@ -23,7 +23,20 @@ const apiLimiter = rateLimit({
   },
 });
 
+// Forgot password rate limiter (3 requests per hour max)
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // Limit each IP to 3 forgot-password requests per hour
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many password reset attempts. Please try again after an hour.',
+  },
+});
+
 module.exports = {
   authLimiter,
   apiLimiter,
+  forgotPasswordLimiter,
 };

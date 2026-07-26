@@ -6,6 +6,7 @@ const {
   razorpayWebhook,
   getStudentOrders,
   getKitchenOrders,
+  getKitchenOrderCounts,
   updateOrderStatus,
 } = require('../controllers/orderController');
 const { verifyStudent, verifyAdmin } = require('../middleware/authMiddleware');
@@ -20,6 +21,7 @@ router.post('/webhook', razorpayWebhook);
 
 // Kitchen / Admin endpoints
 router.get('/kitchen-orders', verifyAdmin, getKitchenOrders);
+router.get('/kitchen-order-counts', verifyAdmin, getKitchenOrderCounts);
 router.patch('/status/:id', verifyAdmin, updateOrderStatus);
 
 module.exports = router;

@@ -82,8 +82,29 @@ const sendAdminInvitation = async (email, username, inviteLink) => {
   return await sendEmail({ to: email, subject, html });
 };
 
+const sendStudentPasswordReset = async (email, resetLink) => {
+  const subject = 'Reset Your Mess Account Password';
+  const html = `
+    <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: #ea580c; margin-bottom: 10px;">🍱 Password Reset Request</h2>
+      <p>Hello,</p>
+      <p>We received a request to reset the password for your student mess account.</p>
+      <p>Click the button below to set a new password. This link is valid for <strong>15 minutes</strong>:</p>
+      <div style="text-align: center; margin: 25px 0;">
+        <a href="${resetLink}" style="background-color: #ea580c; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Reset Password</a>
+      </div>
+      <p style="font-size: 13px; color: #666;">Or copy and paste this link into your browser: <br/><a href="${resetLink}">${resetLink}</a></p>
+      <p style="font-size: 12px; color: #888;">If you did not request a password reset, you can safely ignore this email.</p>
+      <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+      <p style="font-size: 12px; color: #777;">Campus Mess Management Team</p>
+    </div>
+  `;
+  return await sendEmail({ to: email, subject, html });
+};
+
 module.exports = {
   generateOTP,
   sendOTP,
   sendAdminInvitation,
+  sendStudentPasswordReset,
 };

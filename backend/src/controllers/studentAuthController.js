@@ -1,8 +1,9 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { z } = require('zod');
 const Student = require('../models/Student');
-const { generateOTP, sendOTP } = require('../services/otpService');
+const { generateOTP, sendOTP, sendStudentPasswordReset } = require('../services/otpService');
 
 // Zod schemas for input validation
 const signupSchema = z.object({
@@ -314,10 +315,93 @@ const getStudentProfile = async (req, res) => {
   });
 };
 
+// Forgot Password Controller
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email address is required.' });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+    const student = await Student.findOne({ email: cleanEmail, is_verified: true });
+
+    if (student) {
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+      student.reset_token = resetToken;
+      student.reset_token_expires = resetExpires;
+      await student.save();
+
+      const studentAppUrl = (process.env.FRONTEND_STUDENT_URL || 'https://mess-mgmt.vercel.app').replace(/\/+$/, '');
+      const resetLink = `${studentAppUrl}/?reset_token=${resetToken}`;
+
+      await sendStudentPasswordReset(cleanEmail, resetLink);
+    }
+
+    // Always respond with generic confirmation to prevent email enumeration
+    return res.status(200).json({
+      success: true,
+      message: 'If an account exists with this email, a reset link has been sent.',
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    return res.status(500).json({ success: false, message: 'Server error processing password reset request.' });
+  }
+};
+
+// Reset Password Controller
+const resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ success: false, message: 'Invalid or missing password reset token.' });
+    }
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
+    }
+
+    const student = await Student.findOne({
+      reset_token: token.trim(),
+      reset_token_expires: { $gt: new Date() },
+    });
+
+    if (!student) {
+      return res.status(400).json({
+        success: false,
+        message: 'This reset link has expired or is invalid — please request a new one.',
+      });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    student.password_hash = hashedPassword;
+    student.reset_token = null;
+    student.reset_token_expires = null;
+    student.failed_login_attempts = 0;
+    student.locked_until = null;
+    await student.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password updated successfully — please sign in with your new password.',
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    return res.status(500).json({ success: false, message: 'Server error resetting password.' });
+  }
+};
+
 module.exports = {
   registerStudent,
   verifyOTP,
   resendOTP,
   loginStudent,
   getStudentProfile,
+  forgotPassword,
+  resetPassword,
 };

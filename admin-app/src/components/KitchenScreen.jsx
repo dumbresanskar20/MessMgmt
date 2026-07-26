@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
-import { Wifi, WifiOff, RefreshCw, CheckCircle2, Clock, ChefHat, Check } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, CheckCircle2, Clock, ChefHat, Check, ShoppingBag, User } from 'lucide-react';
 import api from '../services/api';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
@@ -9,32 +9,55 @@ export default function KitchenScreen() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
-  const [selectedMeal, setSelectedMeal] = useState('');
-  const [statusFilter, setStatusFilter] = useState('active'); // 'active' | 'all' | 'delivered'
+  const [selectedMeal, setSelectedMeal] = useState('all'); // 'all' | 'breakfast' | 'lunch' | 'snacks' | 'dinner'
+  
+  // Summary counts state
+  const [orderCounts, setOrderCounts] = useState({
+    breakfast: { total_orders_today: 0, active_tokens: 0 },
+    lunch: { total_orders_today: 0, active_tokens: 0 },
+    snacks: { total_orders_today: 0, active_tokens: 0 },
+    dinner: { total_orders_today: 0, active_tokens: 0 },
+    combined: { total_orders_today: 0, active_tokens: 0 },
+  });
 
-  // Fetch kitchen orders from API
-  const fetchOrders = async () => {
+  // Fetch today's orders & summary counts
+  const fetchKitchenData = async () => {
     try {
-      let url = '/orders/kitchen-orders?date=' + new Date().toISOString().split('T')[0];
-      if (selectedMeal) url += `&meal_type=${selectedMeal}`;
-      const res = await api.get(url);
-      if (res.data.success) {
-        setOrders(res.data.orders);
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // Fetch active kitchen orders
+      let ordersUrl = `/orders/kitchen-orders?date=${todayStr}`;
+      if (selectedMeal && selectedMeal !== 'all') {
+        ordersUrl += `&meal_type=${selectedMeal}`;
+      }
+      
+      const [ordersRes, countsRes] = await Promise.all([
+        api.get(ordersUrl),
+        api.get(`/orders/kitchen-order-counts?date=${todayStr}`),
+      ]);
+
+      if (ordersRes.data.success) {
+        setOrders(ordersRes.data.orders || []);
+      }
+
+      if (countsRes.data.success && countsRes.data.orderCounts) {
+        setOrderCounts(countsRes.data.orderCounts);
       }
     } catch (err) {
-      console.error('Kitchen orders fetch error:', err);
+      console.error('Kitchen data fetch error:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Setup Socket.IO real-time subscription with 15s polling fallback
+  // Socket.IO Real-time setup + 15s polling fallback
   useEffect(() => {
-    fetchOrders();
+    fetchKitchenData();
 
     const socketUrl =
       import.meta.env.VITE_SOCKET_URL ||
       (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') : 'https://messmgmt.onrender.com');
+
     const socket = io(socketUrl, {
       auth: { token },
       transports: ['websocket', 'polling'],
@@ -49,19 +72,55 @@ export default function KitchenScreen() {
       setConnected(false);
     });
 
+    // Real-time new paid order listener
     socket.on('order:new', (newOrder) => {
-      setOrders((prev) => [newOrder, ...prev.filter((o) => o._id !== newOrder.id && o._id !== newOrder._id)]);
+      setOrders((prev) => {
+        const exists = prev.some((o) => o._id === newOrder._id || o._id === newOrder.id);
+        if (exists) return prev;
+        return [...prev, newOrder].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      });
+      if (newOrder.orderCounts) {
+        setOrderCounts(newOrder.orderCounts);
+      }
     });
 
-    socket.on('order:status_updated', ({ orderId, order_status }) => {
-      setOrders((prev) =>
-        prev.map((o) => (o._id === orderId ? { ...o, order_status } : o))
-      );
+    // Consolidated Order Counts & Status Sync listener
+    socket.on('order-counts-updated', (payload) => {
+      if (payload.orderCounts) {
+        setOrderCounts(payload.orderCounts);
+      }
+
+      if (payload.order_status === 'delivered') {
+        // Remove delivered token row
+        setOrders((prev) => prev.filter((o) => o._id !== payload.orderId && o._id !== payload.id));
+      } else if (payload.orderId || payload.id) {
+        // Update order status in place
+        setOrders((prev) =>
+          prev.map((o) =>
+            o._id === payload.orderId || o._id === payload.id
+              ? { ...o, order_status: payload.order_status }
+              : o
+          )
+        );
+      }
     });
 
-    // 15-second Auto-Polling Fallback in case socket drops in a busy kitchen
+    socket.on('order:status_updated', (payload) => {
+      if (payload.order_status === 'delivered') {
+        setOrders((prev) => prev.filter((o) => o._id !== payload.orderId && o._id !== payload.id));
+      } else {
+        setOrders((prev) =>
+          prev.map((o) => (o._id === payload.orderId ? { ...o, order_status: payload.order_status } : o))
+        );
+      }
+      if (payload.orderCounts) {
+        setOrderCounts(payload.orderCounts);
+      }
+    });
+
+    // 15-second Auto-Polling Fallback
     const interval = setInterval(() => {
-      fetchOrders();
+      fetchKitchenData();
     }, 15000);
 
     return () => {
@@ -70,212 +129,249 @@ export default function KitchenScreen() {
     };
   }, [token, selectedMeal]);
 
-  // Update order status (big tap target action)
-  const handleUpdateStatus = async (orderId, newStatus) => {
+  // Mark Delivered action with Optimistic UI
+  const handleMarkDelivered = async (orderId) => {
+    const previousOrders = [...orders];
+    const previousCounts = { ...orderCounts };
+
+    // Optimistically remove row from active list & decrement active counts
+    setOrders((prev) => prev.filter((o) => o._id !== orderId));
+
+    setOrderCounts((prev) => {
+      const updated = JSON.parse(JSON.stringify(prev));
+      if (updated.combined && updated.combined.active_tokens > 0) {
+        updated.combined.active_tokens -= 1;
+      }
+      return updated;
+    });
+
     try {
-      // Optimistic state update for instant UI feedback
-      setOrders((prev) =>
-        prev.map((o) => (o._id === orderId ? { ...o, order_status: newStatus } : o))
-      );
-      await api.patch(`/orders/status/${orderId}`, { order_status: newStatus });
+      await api.patch(`/orders/status/${orderId}`, { order_status: 'delivered' });
     } catch (err) {
-      console.error('Error updating order status:', err);
-      fetchOrders(); // Revert on failure
+      console.error('Failed to mark order as delivered:', err);
+      // Revert optimistic update on failure
+      setOrders(previousOrders);
+      setOrderCounts(previousCounts);
+      alert('Failed to update status. Please check your network connection.');
     }
   };
 
-  // Filter logic
-  const filteredOrders = orders.filter((ord) => {
-    if (statusFilter === 'active') {
-      return ['placed', 'preparing', 'ready'].includes(ord.order_status);
-    }
-    if (statusFilter === 'delivered') {
-      return ord.order_status === 'delivered';
-    }
-    return true;
-  });
+  // Filter active tokens (exclude delivered / cancelled)
+  const activeTokenList = orders.filter(
+    (ord) => ord.order_status !== 'delivered' && ord.order_status !== 'cancelled'
+  );
+
+  const MEAL_TYPES = [
+    { id: 'all', label: 'All Meals' },
+    { id: 'breakfast', label: 'Breakfast' },
+    { id: 'lunch', label: 'Lunch' },
+    { id: 'snacks', label: 'Snacks' },
+    { id: 'dinner', label: 'Dinner' },
+  ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6 max-w-screen-2xl mx-auto">
       
       {/* Top Banner with Real-time Socket Indicator */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <span>🔥 Kitchen Display System</span>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+            <span className="w-9 h-9 rounded-xl bg-orange-100 text-brand-orange flex items-center justify-center text-xl">🔥</span>
+            <span>Kitchen Display System</span>
           </h2>
-          <p className="text-xs text-slate-500 font-semibold mt-0.5">
-            Live Token Grid for Canteen Counter • Today: {new Date().toLocaleDateString()}
+          <p className="text-xs text-slate-500 font-semibold mt-1">
+            Live Active Token Queue & Daily Order Analytics • {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
           </p>
         </div>
 
-        {/* Status Indicators & Controls */}
-        <div className="flex items-center gap-3">
-          {/* Socket Connection Badge */}
-          <div className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border ${
+        {/* Status Indicators & Refresh */}
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={fetchKitchenData}
+            className="p-2.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+            title="Manual Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-extrabold border ${
             connected
               ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
               : 'bg-amber-50 border-amber-300 text-amber-800 animate-pulse'
           }`}>
             {connected ? <Wifi className="w-4 h-4 text-emerald-600" /> : <WifiOff className="w-4 h-4 text-amber-600" />}
-            <span>{connected ? 'Live Socket Connected' : 'Reconnecting... (15s Fallback Active)'}</span>
+            <span>{connected ? 'Live Socket Connected' : 'Reconnecting... (15s Fallback)'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 3A. SUMMARY COUNTS (TOP OF SCREEN) */}
+      <div>
+        <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3 px-1">
+          Today's Order Summary
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+          
+          {/* Combined Total Card */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Combined All Meals</span>
+            <div className="flex items-baseline justify-between pt-1">
+              <div>
+                <span className="text-2xl sm:text-3xl font-black text-slate-900 leading-none">
+                  {orderCounts.combined.total_orders_today}
+                </span>
+                <span className="block text-[10px] font-semibold text-slate-400 mt-1">Total Orders Today</span>
+              </div>
+              <div className="text-right">
+                <span className="text-2xl sm:text-3xl font-black text-amber-600 leading-none">
+                  {orderCounts.combined.active_tokens}
+                </span>
+                <span className="block text-[10px] font-bold text-amber-600 uppercase mt-1">Active Tokens</span>
+              </div>
+            </div>
           </div>
 
-          <button
-            onClick={fetchOrders}
-            className="p-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-700 font-bold text-xs flex items-center gap-1 transition-colors"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Filter Tabs */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-100 p-2 rounded-2xl border border-slate-200">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setStatusFilter('active')}
-            className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all ${
-              statusFilter === 'active' ? 'bg-slate-900 text-white shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Active Orders ({orders.filter((o) => ['placed', 'preparing', 'ready'].includes(o.order_status)).length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('delivered')}
-            className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all ${
-              statusFilter === 'delivered' ? 'bg-slate-900 text-white shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Delivered ({orders.filter((o) => o.order_status === 'delivered').length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-5 py-2.5 rounded-xl font-bold text-xs transition-all ${
-              statusFilter === 'all' ? 'bg-slate-900 text-white shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            All Today ({orders.length})
-          </button>
-        </div>
-
-        {/* Meal Type Filter */}
-        <div className="flex items-center gap-2">
-          {['', 'breakfast', 'lunch', 'snacks', 'dinner'].map((m) => (
-            <button
-              key={m}
-              onClick={() => setSelectedMeal(m)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${
-                selectedMeal === m ? 'bg-emerald-700 text-white' : 'bg-white text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {m || 'All Meals'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Token Cards Grid (High contrast, readable from a few feet away!) */}
-      {loading ? (
-        <div className="text-center py-20 text-slate-400 font-bold text-lg">Loading live kitchen stream...</div>
-      ) : filteredOrders.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-2xl border border-slate-200">
-          <ChefHat className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-          <h3 className="text-xl font-bold text-slate-700">No active kitchen tokens right now</h3>
-          <p className="text-xs text-slate-500 mt-1">New student orders will appear automatically on this grid.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredOrders.map((ord) => {
-            const isDelivered = ord.order_status === 'delivered';
-            const isReady = ord.order_status === 'ready';
-            const isPreparing = ord.order_status === 'preparing' || ord.order_status === 'placed';
-
-            // High contrast color coding
-            let cardBg = 'bg-amber-50/90 border-amber-300 text-amber-950';
-            let tokenBadgeBg = 'bg-amber-500 text-white';
-
-            if (isReady) {
-              cardBg = 'bg-blue-50 border-blue-400 text-blue-950';
-              tokenBadgeBg = 'bg-blue-600 text-white';
-            } else if (isDelivered) {
-              cardBg = 'bg-emerald-50/70 border-emerald-300 text-emerald-950 opacity-75';
-              tokenBadgeBg = 'bg-emerald-600 text-white';
-            }
-
+          {/* Meal Specific Cards */}
+          {['breakfast', 'lunch', 'snacks', 'dinner'].map((meal) => {
+            const data = orderCounts[meal] || { total_orders_today: 0, active_tokens: 0 };
+            const label = meal.charAt(0).toUpperCase() + meal.slice(1);
             return (
-              <div
-                key={ord._id}
-                className={`rounded-3xl border-3 p-5 shadow-lg flex flex-col justify-between transition-all ${cardBg}`}
-              >
-                {/* Token Header */}
-                <div>
-                  <div className="flex items-center justify-between pb-3 border-b border-black/10">
-                    <span className={`text-3xl font-black font-mono tracking-wider px-3.5 py-1 rounded-2xl shadow-sm ${tokenBadgeBg}`}>
-                      {ord.token_number || 'B-000'}
+              <div key={meal} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                <div className="flex items-baseline justify-between pt-1">
+                  <div>
+                    <span className="text-xl sm:text-2xl font-black text-slate-800 leading-none">
+                      {data.total_orders_today}
                     </span>
-                    <span className="text-xs font-black uppercase tracking-wider bg-black/10 px-3 py-1 rounded-full">
-                      {ord.meal_type}
+                    <span className="block text-[9px] font-semibold text-slate-400 mt-0.5">Total Paid</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xl sm:text-2xl font-black text-amber-600 leading-none">
+                      {data.active_tokens}
                     </span>
-                  </div>
-
-                  {/* Student Info */}
-                  <div className="mt-3 font-semibold text-xs opacity-90">
-                    <p className="text-base font-bold text-slate-900 truncate">
-                      {ord.student_id?.name || 'Student'}
-                    </p>
-                    <p className="text-[11px] font-mono text-slate-600">{ord.student_id?.roll_no || ''}</p>
-                  </div>
-
-                  {/* Food Items List */}
-                  <div className="my-4 space-y-2 bg-white/70 p-3 rounded-2xl border border-black/5">
-                    {ord.items?.map((it, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-sm font-extrabold text-slate-900">
-                        <span>{it.item_name}</span>
-                        <span className="bg-slate-900 text-white text-xs px-2.5 py-0.5 rounded-lg font-mono">
-                          × {it.quantity}
-                        </span>
-                      </div>
-                    ))}
+                    <span className="block text-[9px] font-bold text-amber-600 uppercase mt-0.5">Active</span>
                   </div>
                 </div>
-
-                {/* Big Tap Target Action Button */}
-                <div className="pt-2">
-                  {isPreparing && (
-                    <button
-                      onClick={() => handleUpdateStatus(ord._id, 'ready')}
-                      className="w-full py-4 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-2xl text-base shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                      <Clock className="w-5 h-5" />
-                      <span>MARK READY FOR PICKUP</span>
-                    </button>
-                  )}
-
-                  {isReady && (
-                    <button
-                      onClick={() => handleUpdateStatus(ord._id, 'delivered')}
-                      className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl text-base shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                      <CheckCircle2 className="w-5 h-5" />
-                      <span>MARK DELIVERED</span>
-                    </button>
-                  )}
-
-                  {isDelivered && (
-                    <div className="w-full py-3 bg-emerald-100 text-emerald-800 font-extrabold rounded-2xl text-center text-sm flex items-center justify-center gap-1.5">
-                      <Check className="w-4 h-4" /> Delivered & Completed
-                    </div>
-                  )}
-                </div>
-
               </div>
             );
           })}
-        </div>
-      )}
 
+        </div>
+      </div>
+
+      {/* 3B. ACTIVE TOKEN LIST SECTION */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        
+        {/* Controls & Filter Bar */}
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-black text-slate-900 tracking-tight">Active Token Queue</h3>
+            <span className="bg-amber-100 text-amber-800 font-extrabold text-xs px-2.5 py-0.5 rounded-full">
+              {activeTokenList.length} Undelivered
+            </span>
+          </div>
+
+          {/* Meal Filter Tabs */}
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl overflow-x-auto">
+            {MEAL_TYPES.map((type) => (
+              <button
+                key={type.id}
+                onClick={() => setSelectedMeal(type.id)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  selectedMeal === type.id
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                {type.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ACTIVE TOKEN LIST UI */}
+        {loading ? (
+          <div className="p-12 text-center text-slate-400 font-medium animate-pulse">
+            Loading active kitchen tokens...
+          </div>
+        ) : activeTokenList.length === 0 ? (
+          <div className="p-16 text-center space-y-3">
+            <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-2xl mx-auto">
+              ✨
+            </div>
+            <h4 className="text-slate-700 font-bold text-lg">No active tokens in queue!</h4>
+            <p className="text-slate-400 text-xs max-w-sm mx-auto">
+              All placed orders for {selectedMeal === 'all' ? 'today' : selectedMeal} have been delivered. New orders will appear here automatically in real time.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {activeTokenList.map((ord) => {
+              const studentName = ord.student_id?.name || ord.student_name || 'Student';
+              const rollNo = ord.student_id?.roll_no || '';
+              const itemsList = (ord.items || [])
+                .map((i) => `${i.quantity}x ${i.item_name || i.name}`)
+                .join(', ');
+
+              return (
+                <div
+                  key={ord._id || ord.id}
+                  className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors"
+                >
+                  {/* Left: Token Number & Student Info */}
+                  <div className="flex items-center gap-4 sm:gap-6 min-w-0">
+                    
+                    {/* Prominent Token Number */}
+                    <div className="w-20 sm:w-24 h-14 sm:h-16 rounded-2xl bg-amber-500 text-white font-black text-2xl sm:text-3xl flex items-center justify-center tracking-tight shadow-md shrink-0">
+                      {ord.token_number || 'T-00'}
+                    </div>
+
+                    {/* Student & Order Details */}
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-base sm:text-lg text-slate-900 truncate">
+                          {studentName}
+                        </span>
+                        {rollNo && (
+                          <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                            {rollNo}
+                          </span>
+                        )}
+                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
+                          {ord.meal_type}
+                        </span>
+                      </div>
+
+                      {/* Items Summary */}
+                      <p className="text-xs font-semibold text-slate-600 truncate max-w-xl">
+                        {itemsList || 'Meal items'}
+                      </p>
+
+                      {/* Time Placed */}
+                      <p className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
+                        <Clock className="w-3 h-3" />
+                        <span>Placed at {new Date(ord.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right Action: Big Touch-Friendly DELIVERED Button */}
+                  <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                    <button
+                      onClick={() => handleMarkDelivered(ord._id || ord.id)}
+                      className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-sm rounded-2xl shadow-md transition-all flex items-center gap-2 min-w-[140px] justify-center cursor-pointer"
+                    >
+                      <Check className="w-5 h-5 stroke-[3]" />
+                      <span>DELIVERED</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }
