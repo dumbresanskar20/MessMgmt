@@ -102,6 +102,24 @@ app.use((err, req, res, next) => {
 // Start Server
 const PORT = process.env.PORT || 5000;
 
+// Keep-alive self ping interval (every 14 minutes) to prevent Render free instance from going to sleep
+const startKeepAliveSelfPing = () => {
+  const https = require('https');
+  const backendUrl = process.env.RENDER_EXTERNAL_URL || 'https://messmgmt.onrender.com';
+  const pingUrl = `${backendUrl.replace(/\/+$/, '')}/api/health`;
+
+  console.log(`[Keep-Alive] Configured self-ping to keep Render instance awake: ${pingUrl}`);
+
+  // Ping every 14 minutes (Render sleeps after 15 mins of inactivity)
+  setInterval(() => {
+    https.get(pingUrl, (res) => {
+      console.log(`[Keep-Alive Ping] Pinged ${pingUrl} (Status: ${res.statusCode})`);
+    }).on('error', (err) => {
+      console.warn(`[Keep-Alive Ping Error] ${err.message}`);
+    });
+  }, 14 * 60 * 1000);
+};
+
 connectDB().then(() => {
   // Initialize daily automated order history cleanup background job
   initOrderCleanupJob();
@@ -109,7 +127,10 @@ connectDB().then(() => {
   server.listen(PORT, () => {
     console.log(`\n==================================================`);
     console.log(`🚀 Mess Management Server running on port ${PORT}`);
-    console.log(`📡 Socket.IO server active`);
+    console.log(`🌐 API Health Check: http://localhost:${PORT}/api/health`);
     console.log(`==================================================\n`);
+
+    // Start self-pinging keep alive interval
+    startKeepAliveSelfPing();
   });
 });
