@@ -86,7 +86,7 @@ export default function App() {
       <Hero3D />
 
       {/* Main Menu Section */}
-      <main id="menu-section" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <main id="menu-section" className="flex-1 max-w-screen-2xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
         
         {/* ALL MEAL TYPES INACTIVE EDGE CASE (CANTEEN CLOSED FOR HOLIDAY) */}
         {allMealsInactive ? (
@@ -213,7 +213,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="bg-stone-900 text-stone-300 py-10 border-t border-stone-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-3">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-3">
           <div className="flex items-center justify-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-brand-orange text-white flex items-center justify-center text-lg">🍱</div>
             <span className="font-display font-bold text-xl text-white">CampusMess</span>

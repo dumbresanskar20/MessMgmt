@@ -36,19 +36,19 @@ export default function Header({ onOpenOrders }) {
 
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-amber-100/80 shadow-sm transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 sm:h-20">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 sm:h-20 gap-4">
           
           {/* Brand Logo & Name */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+          <div className="flex items-center gap-3 cursor-pointer shrink-0" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-brand-orange to-amber-500 flex items-center justify-center text-white text-2xl shadow-warm hover:rotate-6 transition-transform">
               🍱
             </div>
             <div>
-              <span className="font-display font-extrabold text-xl sm:text-2xl text-brand-dark tracking-tight leading-none block">
+              <span className="font-display font-extrabold text-xl sm:text-2xl text-brand-dark tracking-tight leading-none block whitespace-nowrap">
                 Campus<span className="text-brand-orange">Mess</span>
               </span>
-              <span className="text-[10px] sm:text-xs font-semibold text-stone-500 tracking-wider uppercase hidden sm:block">
+              <span className="text-[10px] sm:text-xs font-semibold text-stone-500 tracking-wider uppercase hidden sm:block whitespace-nowrap">
                 Fresh & Delicious Daily
               </span>
             </div>
@@ -56,7 +56,7 @@ export default function Header({ onOpenOrders }) {
 
           {/* Dynamic Desktop Category Meal Nav */}
           {dynamicTabs.length > 0 && (
-            <nav className="hidden md:flex items-center gap-1.5 bg-stone-100/80 p-1.5 rounded-2xl border border-stone-200/60">
+            <nav className="hidden md:flex items-center gap-1.5 shrink-0 whitespace-nowrap bg-stone-100/80 p-1.5 rounded-2xl border border-stone-200/60">
               {dynamicTabs.map((tab) => {
                 const active = selectedMealType === tab.id;
                 const isClosed = !tab.isCurrentlyOpen;
@@ -65,7 +65,7 @@ export default function Header({ onOpenOrders }) {
                   <button
                     key={tab.id}
                     onClick={() => setSelectedMealType(tab.id)}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 ${
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 transition-all duration-200 ${
                       active
                         ? isClosed
                           ? 'bg-amber-900/90 text-amber-100 shadow-md scale-105 border border-amber-700/50'
@@ -94,7 +94,7 @@ export default function Header({ onOpenOrders }) {
           )}
 
           {/* Right Action Bar: Cart Icon & Persistent Auth Control */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             
             {/* Cart Tray Trigger */}
             <button
