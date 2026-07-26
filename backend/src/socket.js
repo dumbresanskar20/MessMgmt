@@ -1,0 +1,57 @@
+const jwt = require('jsonwebtoken');
+
+const initSocketIO = (io) => {
+  // Middleware to authenticate socket connections via JWT token
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+    if (!token) {
+      // Allow anonymous connection for non-sensitive public events if any
+      socket.userType = 'anonymous';
+      return next();
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_access_key_change_in_production');
+      socket.user = decoded;
+      if (['super_admin', 'staff'].includes(decoded.role)) {
+        socket.userType = 'admin';
+      } else if (decoded.role === 'student') {
+        socket.userType = 'student';
+      }
+      return next();
+    } catch (err) {
+      console.warn(`[Socket.IO] Auth verification failed for socket ${socket.id}: ${err.message}`);
+      socket.userType = 'anonymous';
+      return next();
+    }
+  });
+
+  io.on('connection', (socket) => {
+    console.log(`[Socket.IO] Client connected: ${socket.id} (Type: ${socket.userType || 'anonymous'})`);
+
+    // Kitchen Screen Subscription (strictly for authenticated admins)
+    socket.on('join:kitchen', () => {
+      if (socket.userType === 'admin') {
+        socket.join('kitchen');
+        console.log(`[Socket.IO] Admin socket ${socket.id} (${socket.user?.username}) joined room 'kitchen'`);
+        socket.emit('joined:kitchen', { success: true, message: 'Subscribed to live kitchen order stream.' });
+      } else {
+        socket.emit('error', { message: 'Unauthorized. Admin token required to join kitchen stream.' });
+      }
+    });
+
+    // Student Order Subscription
+    socket.on('join:student', (studentId) => {
+      if (socket.userType === 'student' && socket.user?.id === studentId) {
+        socket.join(`student:${studentId}`);
+        console.log(`[Socket.IO] Student socket ${socket.id} joined room 'student:${studentId}'`);
+      }
+    });
+
+    socket.on('disconnect', () => {
+      console.log(`[Socket.IO] Client disconnected: ${socket.id}`);
+    });
+  });
+};
+
+module.exports = initSocketIO;
