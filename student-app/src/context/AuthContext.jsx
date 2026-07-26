@@ -50,7 +50,7 @@ export const AuthProvider = ({ children }) => {
       handleAuthSuccess(data.student, data.accessToken);
       return { success: true, message: data.message };
     } catch (error) {
-      const msg = error.response?.data?.message || 'Login failed. Please check your credentials.';
+      const msg = error.response?.data?.message || error.message || 'Login failed. Please check your credentials.';
       return { success: false, message: msg };
     } finally {
       setLoading(false);

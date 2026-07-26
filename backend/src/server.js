@@ -14,6 +14,9 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
+// Enable trust proxy for Render / Cloudflare reverse proxy rate-limiting & IP tracking
+app.set('trust proxy', 1);
+
 // CORS configuration helper function
 const cleanOrigin = (url) => (url ? url.replace(/\/+$/, '') : '');
 
@@ -35,8 +38,13 @@ const allowedOrigins = Array.from(
 app.use(
   cors({
     origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
       const normalizedOrigin = cleanOrigin(origin);
-      if (!origin || allowedOrigins.includes(normalizedOrigin) || process.env.NODE_ENV !== 'production') {
+      if (
+        allowedOrigins.includes(normalizedOrigin) ||
+        normalizedOrigin.endsWith('.vercel.app') ||
+        process.env.NODE_ENV !== 'production'
+      ) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
