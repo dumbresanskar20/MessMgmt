@@ -14,20 +14,29 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// CORS configuration
-const allowedOrigins = [
-  process.env.FRONTEND_STUDENT_URL || 'http://localhost:5173',
-  process.env.FRONTEND_ADMIN_URL || 'http://localhost:5174',
+// CORS configuration helper function
+const cleanOrigin = (url) => (url ? url.replace(/\/+$/, '') : '');
+
+const rawOrigins = [
+  process.env.FRONTEND_STUDENT_URL,
+  process.env.FRONTEND_ADMIN_URL,
+  'https://mess-mgmt.vercel.app',
+  'https://mess-mgmt-fo5r.vercel.app',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
 ];
 
+const allowedOrigins = Array.from(
+  new Set(rawOrigins.filter(Boolean).map(cleanOrigin))
+);
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+      const normalizedOrigin = cleanOrigin(origin);
+      if (!origin || allowedOrigins.includes(normalizedOrigin) || process.env.NODE_ENV !== 'production') {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));

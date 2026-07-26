@@ -129,7 +129,7 @@ const createStaffAccount = async (req, res) => {
 
     await newAdmin.save();
 
-    const adminAppUrl = process.env.FRONTEND_ADMIN_URL || 'http://localhost:5174';
+    const adminAppUrl = (process.env.FRONTEND_ADMIN_URL || 'http://localhost:5174').replace(/\/+$/, '');
     const inviteLink = `${adminAppUrl}/set-password?token=${verificationToken}`;
 
     await sendAdminInvitation(cleanEmail, username, inviteLink);
