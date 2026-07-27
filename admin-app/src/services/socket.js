@@ -1,13 +1,22 @@
 import { io } from 'socket.io-client';
 
 export const getSocketUrl = () => {
+  const isBrowser = typeof window !== 'undefined';
+  const isLocalhostDomain = isBrowser && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
   if (import.meta.env.VITE_SOCKET_URL) {
-    return import.meta.env.VITE_SOCKET_URL.replace(/\/+$/, '');
+    const url = import.meta.env.VITE_SOCKET_URL.replace(/\/+$/, '');
+    if (isLocalhostDomain || (!url.includes('localhost') && !url.includes('127.0.0.1'))) {
+      return url;
+    }
   }
 
   if (import.meta.env.VITE_API_URL) {
     const cleanApi = import.meta.env.VITE_API_URL.replace(/\/+$/, '');
-    return cleanApi.replace(/\/api\/?$/i, '');
+    const url = cleanApi.replace(/\/api\/?$/i, '');
+    if (isLocalhostDomain || (!url.includes('localhost') && !url.includes('127.0.0.1'))) {
+      return url;
+    }
   }
 
   return 'https://messmgmt.onrender.com';

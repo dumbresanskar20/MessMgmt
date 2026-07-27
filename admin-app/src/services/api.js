@@ -14,9 +14,10 @@ const api = axios.create({
 // Attach Admin JWT bearer token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('admin_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const rawToken = localStorage.getItem('admin_token');
+    if (rawToken && rawToken !== 'null' && rawToken !== 'undefined') {
+      const cleanToken = rawToken.replace(/^"(.*)"$/, '$1').trim();
+      config.headers.Authorization = `Bearer ${cleanToken}`;
     }
     return config;
   },
@@ -28,11 +29,20 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      console.warn('[Admin API] 401 Unauthorized encountered — clearing stale admin_token');
-      localStorage.removeItem('admin_token');
-      localStorage.removeItem('admin_user');
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('admin_auth_unauthorized'));
+      const errorData = error.response.data || {};
+      const isAuthError =
+        errorData.code === 'TOKEN_EXPIRED' ||
+        errorData.code === 'INVALID_TOKEN' ||
+        errorData.code === 'NO_TOKEN' ||
+        (errorData.message && errorData.message.toLowerCase().includes('token'));
+
+      if (isAuthError) {
+        console.warn('[Admin API] 401 Auth error confirmed — clearing stale admin_token');
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_user');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('admin_auth_unauthorized'));
+        }
       }
     }
     return Promise.reject(error);
