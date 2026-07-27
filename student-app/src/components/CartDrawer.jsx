@@ -3,6 +3,7 @@ import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, ShieldCheck, AlertCirc
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import { loadRazorpayScript } from '../utils/loadRazorpay';
 
 export default function CartDrawer({ onOrderSuccess }) {
   const { cartItems, cartTotal, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity, selectedMealType, clearCart } = useCart();
@@ -26,25 +27,64 @@ export default function CartDrawer({ onOrderSuccess }) {
     setCheckoutLoading(true);
 
     try {
-      // 1. Request backend Razorpay Order creation (Backend validates item availability & prices)
+      // 1. Verify VITE_RAZORPAY_KEY_ID availability
+      const frontendKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+      console.log(
+        '[Razorpay Diagnostics] 1. Checking Frontend VITE_RAZORPAY_KEY_ID:',
+        frontendKey ? `${frontendKey.substring(0, 10)}...` : 'MISSING / UNDEFINED'
+      );
+
+      if (!frontendKey || frontendKey === 'rzp_test_YourKeyIdHere') {
+        console.warn(
+          '[Razorpay Diagnostics] Warning: VITE_RAZORPAY_KEY_ID is missing or set to placeholder string in Vercel environment variables!'
+        );
+      }
+
+      // 2. Verify Razorpay Checkout.js SDK script loading
+      console.log('[Razorpay Diagnostics] 2. Verifying Razorpay Checkout SDK script presence...');
+      const scriptReady = await loadRazorpayScript();
+
+      if (!scriptReady || typeof window.Razorpay === 'undefined') {
+        console.error('[Razorpay Diagnostics] Razorpay SDK failed to load — check network/ad-blocker');
+        setErrorMessage('Razorpay SDK failed to load — check network connection or ad-blocker extension.');
+        setCheckoutLoading(false);
+        return;
+      }
+
+      // 3. Request backend Razorpay Order creation (Backend validates item availability & prices)
+      console.log('[Razorpay Diagnostics] 3. Calling backend /orders/create-razorpay-order...', {
+        itemsCount: cartItems.length,
+        meal_type: selectedMealType,
+        cartTotal,
+      });
+
       const res = await api.post('/orders/create-razorpay-order', {
         items: cartItems,
         meal_type: selectedMealType,
       });
 
+      console.log('[Razorpay Diagnostics] 4. Backend order creation response received:', res.data);
+
       const { razorpay_order_id, amount, currency, key_id, order_db_id } = res.data;
 
-      // 2. Configure Razorpay SDK Checkout options
+      if (!razorpay_order_id) {
+        throw new Error('Backend response did not contain a valid Razorpay Order ID.');
+      }
+
+      const activeKey = key_id || frontendKey;
+
+      // 4. Configure Razorpay SDK Checkout options
       const options = {
-        key: key_id,
+        key: activeKey,
         amount: amount,
-        currency: currency,
+        currency: currency || 'INR',
         name: 'Campus Mess Canteen',
         description: `${selectedMealType.toUpperCase()} Meal Order Token`,
         order_id: razorpay_order_id.startsWith('order_mock_') ? undefined : razorpay_order_id,
         handler: async function (response) {
+          console.log('[Razorpay Diagnostics] Payment succeeded on client, verifying signature with backend...', response);
           try {
-            // 3. Verify Payment Signature & Fulfill Order Token
+            // Verify Payment Signature & Fulfill Order Token
             const verifyRes = await api.post('/orders/verify-payment', {
               razorpay_order_id: response.razorpay_order_id || razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id || `pay_mock_${Date.now()}`,
@@ -52,13 +92,18 @@ export default function CartDrawer({ onOrderSuccess }) {
               order_db_id: order_db_id,
             });
 
+            console.log('[Razorpay Diagnostics] Payment verification response:', verifyRes.data);
+
             if (verifyRes.data.success) {
               clearCart(); // Clear cart ONLY on successful checkout
               setIsCartOpen(false);
               onOrderSuccess(verifyRes.data.token_number, verifyRes.data.order);
+            } else {
+              setErrorMessage(verifyRes.data.message || 'Payment verification failed.');
             }
           } catch (verifyErr) {
-            setErrorMessage('Payment verification failed. Please check your order status.');
+            console.error('[Razorpay Diagnostics] Payment verification error:', verifyErr);
+            setErrorMessage(verifyErr.response?.data?.message || 'Payment verification failed. Please check your order status.');
           } finally {
             setCheckoutLoading(false);
           }
@@ -72,16 +117,26 @@ export default function CartDrawer({ onOrderSuccess }) {
         },
         modal: {
           ondismiss: function () {
+            console.log('[Razorpay Diagnostics] Checkout modal dismissed by user.');
             setCheckoutLoading(false);
           },
         },
       };
 
-      // Launch Razorpay Checkout window
+      // 5. Instantiate and launch Razorpay Checkout window
       if (typeof window.Razorpay !== 'undefined' && !razorpay_order_id.startsWith('order_mock_')) {
+        console.log(`[Razorpay Diagnostics] 5. Instantiating Razorpay modal with Order ID: ${razorpay_order_id}`);
         const rzp = new window.Razorpay(options);
+
+        rzp.on('payment.failed', function (failureResponse) {
+          console.error('[Razorpay Diagnostics] Razorpay Payment Failed Event:', failureResponse.error);
+          setErrorMessage(`Payment failed: ${failureResponse.error?.description || failureResponse.error?.reason || 'Transaction aborted.'}`);
+          setCheckoutLoading(false);
+        });
+
         rzp.open();
-      } else {
+      } else if (razorpay_order_id.startsWith('order_mock_')) {
+        console.warn('[Razorpay Diagnostics] Local dev mock order ID received. Simulating sandbox fulfillment...');
         // Dev Sandbox Simulation fallback when test keys aren't live
         setTimeout(async () => {
           try {
@@ -103,10 +158,13 @@ export default function CartDrawer({ onOrderSuccess }) {
             setCheckoutLoading(false);
           }
         }, 1000);
+      } else {
+        console.error('[Razorpay Diagnostics] Razorpay SDK failed to load — check network/ad-blocker');
+        setErrorMessage('Razorpay SDK failed to load — check network connection or ad-blocker.');
+        setCheckoutLoading(false);
       }
     } catch (err) {
-      console.error('Checkout error:', err);
-      // Display clear item availability / price change message if backend validation fails
+      console.error('[Razorpay Diagnostics] Checkout initiation failed:', err);
       setErrorMessage(err.response?.data?.message || err.message || 'Failed to initiate Razorpay order.');
       setCheckoutLoading(false);
     }

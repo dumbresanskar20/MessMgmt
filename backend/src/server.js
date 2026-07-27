@@ -40,14 +40,17 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       const normalizedOrigin = cleanOrigin(origin);
-      if (
+      const isAllowed =
         allowedOrigins.includes(normalizedOrigin) ||
         normalizedOrigin.endsWith('.vercel.app') ||
-        process.env.NODE_ENV !== 'production'
-      ) {
+        process.env.NODE_ENV !== 'production';
+
+      if (isAllowed) {
+        console.log(`[CORS Diagnostics] Allowed incoming origin: ${origin}`);
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+        console.warn(`[CORS Diagnostics] BLOCKED incoming origin: ${origin}`);
+        callback(new Error(`Not allowed by CORS: ${origin}`));
       }
     },
     credentials: true,
@@ -102,35 +105,22 @@ app.use((err, req, res, next) => {
 // Start Server
 const PORT = process.env.PORT || 5000;
 
-// Keep-alive self ping interval (every 14 minutes) to prevent Render free instance from going to sleep
-const startKeepAliveSelfPing = () => {
-  const https = require('https');
-  const backendUrl = process.env.RENDER_EXTERNAL_URL || 'https://messmgmt.onrender.com';
-  const pingUrl = `${backendUrl.replace(/\/+$/, '')}/api/health`;
-
-  console.log(`[Keep-Alive] Configured self-ping to keep Render instance awake: ${pingUrl}`);
-
-  // Ping every 14 minutes (Render sleeps after 15 mins of inactivity)
-  setInterval(() => {
-    https.get(pingUrl, (res) => {
-      console.log(`[Keep-Alive Ping] Pinged ${pingUrl} (Status: ${res.statusCode})`);
-    }).on('error', (err) => {
-      console.warn(`[Keep-Alive Ping Error] ${err.message}`);
-    });
-  }, 14 * 60 * 1000);
-};
-
 connectDB().then(() => {
   // Initialize daily automated order history cleanup background job
   initOrderCleanupJob();
 
   server.listen(PORT, () => {
+    const rzpKeyId = process.env.RAZORPAY_KEY_ID;
+    const rzpSecretSet = Boolean(process.env.RAZORPAY_KEY_SECRET);
+
     console.log(`\n==================================================`);
     console.log(`🚀 Mess Management Server running on port ${PORT}`);
-    console.log(`🌐 API Health Check: http://localhost:${PORT}/api/health`);
+    console.log(`📡 Socket.IO server active`);
+    console.log(`💳 Razorpay Key ID: ${rzpKeyId ? `${rzpKeyId.substring(0, 10)}...` : 'MISSING/NOT SET'}`);
+    console.log(`🔑 Razorpay Key Secret Present: ${rzpSecretSet}`);
+    if (!rzpKeyId || rzpKeyId === 'rzp_test_YourKeyIdHere') {
+      console.warn(`⚠️ WARNING: RAZORPAY_KEY_ID is missing or set to fallback placeholder string! Real payment orders will fail.`);
+    }
     console.log(`==================================================\n`);
-
-    // Start self-pinging keep alive interval
-    startKeepAliveSelfPing();
   });
 });

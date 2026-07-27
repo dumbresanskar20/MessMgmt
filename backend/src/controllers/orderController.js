@@ -10,9 +10,15 @@ const { computeMealStatus } = require('./menuController');
 
 // Initialize Razorpay SDK instance safely
 const getRazorpayInstance = () => {
-  const key_id = process.env.RAZORPAY_KEY_ID || 'rzp_test_YourKeyIdHere';
-  const key_secret = process.env.RAZORPAY_KEY_SECRET || 'YourKeySecretHere';
-  return new Razorpay({ key_id, key_secret });
+  const key_id = process.env.RAZORPAY_KEY_ID;
+  const key_secret = process.env.RAZORPAY_KEY_SECRET;
+  if (!key_id || !key_secret) {
+    console.warn('[Razorpay Diagnostics] Warning: RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET is not configured in process.env!');
+  }
+  return new Razorpay({
+    key_id: key_id || 'rzp_test_YourKeyIdHere',
+    key_secret: key_secret || 'YourKeySecretHere',
+  });
 };
 
 // Create Razorpay Order (STRICT STUDENT JWT ENFORCED VIA verifyStudent MIDDLEWARE)
@@ -90,10 +96,19 @@ const createRazorpayOrder = async (req, res) => {
     }
 
     const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-
-    // Try creating Razorpay Order via SDK
-    let razorpayOrderId = `order_mock_${Date.now()}`;
     const amountInPaisa = Math.round(calculatedTotal * 100);
+
+    console.log(`[Razorpay Diagnostics] Backend initiating order creation:`, {
+      studentId: studentId.toString(),
+      meal_type,
+      itemsCount: validatedItems.length,
+      calculatedTotalINR: calculatedTotal,
+      amountInPaisa,
+      configuredKeyId: process.env.RAZORPAY_KEY_ID ? `${process.env.RAZORPAY_KEY_ID.substring(0, 10)}...` : 'MISSING',
+    });
+
+    let razorpayOrderId = null;
+    let rzpErrorDetails = null;
 
     try {
       const razorpay = getRazorpayInstance();
@@ -107,8 +122,30 @@ const createRazorpayOrder = async (req, res) => {
         },
       });
       razorpayOrderId = rzpOrder.id;
+      console.log(`[Razorpay Diagnostics] Order successfully created on Razorpay API:`, {
+        id: rzpOrder.id,
+        amount: rzpOrder.amount,
+        status: rzpOrder.status,
+      });
     } catch (rzpErr) {
-      console.warn(`[Razorpay] Sandbox order creation warning: ${rzpErr.message}. Utilizing test fallback order ID.`);
+      console.error(`[Razorpay Diagnostics] ERROR creating Razorpay order on Razorpay API:`, {
+        message: rzpErr.message,
+        code: rzpErr.code,
+        statusCode: rzpErr.statusCode,
+        description: rzpErr.error?.description || rzpErr.description,
+      });
+      rzpErrorDetails = rzpErr.error?.description || rzpErr.message || 'Razorpay API error';
+
+      // Fallback for local development when no keys are configured
+      if (!process.env.RAZORPAY_KEY_ID && process.env.NODE_ENV !== 'production') {
+        console.warn(`[Razorpay Diagnostics] Local development fallback: generating mock order ID because RAZORPAY_KEY_ID is missing.`);
+        razorpayOrderId = `order_mock_${Date.now()}`;
+      } else {
+        return res.status(500).json({
+          success: false,
+          message: `Razorpay Order Creation Failed: ${rzpErrorDetails}. Please confirm RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on Render.`,
+        });
+      }
     }
 
     // Save pending Order doc in MongoDB
