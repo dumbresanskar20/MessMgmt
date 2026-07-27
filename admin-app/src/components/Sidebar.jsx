@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, UtensilsCrossed, Clock, Users, LogOut, ShieldCheck, ChefHat } from 'lucide-react';
+import { LayoutGrid, UtensilsCrossed, Clock, Users, LogOut, ShieldCheck, ChefHat, Store } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
 export default function Sidebar({ activeTab, setActiveTab }) {
@@ -7,6 +7,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
 
   const navItems = [
     { id: 'kitchen', label: 'Kitchen Screen', icon: LayoutGrid, highlight: true },
+    { id: 'counter', label: 'Counter Payments', icon: Store },
     { id: 'menu', label: 'Menu Management', icon: UtensilsCrossed },
     { id: 'timings', label: 'Meal Timings', icon: Clock },
   ];

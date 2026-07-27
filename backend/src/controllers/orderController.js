@@ -178,8 +178,8 @@ const createRazorpayOrder = async (req, res) => {
   }
 };
 
-// Create Token-Only Order (No Payment required)
-const createTokenOnlyOrder = async (req, res) => {
+// Request Counter Payment Order (Student submits request, NO token assigned yet)
+const requestCounterPaymentOrder = async (req, res) => {
   try {
     const { items, meal_type } = req.body;
     const studentId = req.studentId; // Injected by verifyStudent middleware
@@ -254,19 +254,16 @@ const createTokenOnlyOrder = async (req, res) => {
 
     const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-    // Generate atomic sequential Token Number from shared counter
-    const { tokenNumber, sequenceNumber } = await generateTokenNumber(targetMealType, todayDate);
-
-    // Save Order document with payment_status: 'token_only'
+    // Save Order document with payment_status: 'awaiting_counter_payment' (NO TOKEN NUMBER YET)
     const newOrder = new Order({
       student_id: studentId,
       meal_type: targetMealType,
       items: validatedItems,
       total_amount: calculatedTotal,
-      payment_status: 'token_only',
-      razorpay_order_id: `token_only_${Date.now()}`,
-      token_number: tokenNumber,
-      daily_sequence: sequenceNumber,
+      payment_status: 'awaiting_counter_payment',
+      razorpay_order_id: `counter_req_${Date.now()}`,
+      token_number: null,
+      daily_sequence: 0,
       order_status: 'placed',
       date: todayDate,
     });
@@ -274,42 +271,137 @@ const createTokenOnlyOrder = async (req, res) => {
     await newOrder.save();
     await newOrder.populate('student_id', 'name roll_no email');
 
-    // Compute updated order counts for live kitchen update
-    const orderCounts = await computeKitchenOrderCounts(newOrder.date);
-
-    // Broadcast live Socket.IO event to Kitchen Screen
+    // Broadcast live Socket.IO notification to Admin Panel
     const io = req.app.get('socketio');
     if (io) {
-      const socketPayload = {
-        _id: newOrder._id,
-        id: newOrder._id,
-        token_number: newOrder.token_number,
-        meal_type: newOrder.meal_type,
-        items: newOrder.items,
-        payment_status: newOrder.payment_status,
+      io.emit('counter:order_requested', {
+        orderId: newOrder._id,
         student_name: newOrder.student_id?.name || 'Student',
         roll_no: newOrder.student_id?.roll_no || '',
+        meal_type: newOrder.meal_type,
         total_amount: newOrder.total_amount,
-        order_status: newOrder.order_status,
+        items: newOrder.items,
         created_at: newOrder.created_at,
-        orderCounts,
-      };
-
-      io.to('kitchen').emit('order:new', socketPayload);
-      io.to('kitchen').emit('order-counts-updated', socketPayload);
+      });
     }
 
-    console.log(`[Token Order Created] Token: ${tokenNumber}, Meal: ${targetMealType}, Payment: token_only`);
+    console.log(`[Counter Order Requested] Student: ${newOrder.student_id?.name}, Meal: ${targetMealType}, Total: ₹${calculatedTotal}`);
 
     return res.status(201).json({
       success: true,
-      message: 'Token generated successfully!',
-      token_number: tokenNumber,
+      message: `Order sent to counter! Please pay ₹${calculatedTotal} at the canteen counter to receive your token.`,
       order: newOrder,
     });
   } catch (error) {
-    console.error('Create token order error:', error);
-    return res.status(500).json({ success: false, message: `Failed to generate order token: ${error.message}` });
+    console.error('Request counter payment order error:', error);
+    return res.status(500).json({ success: false, message: `Failed to request counter payment order: ${error.message}` });
+  }
+};
+
+// Get Pending Counter Payment Orders for Admin Panel
+const getPendingCounterOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({
+      payment_status: 'awaiting_counter_payment',
+    })
+      .populate('student_id', 'name roll_no email')
+      .sort({ created_at: 1 }); // Oldest first so staff processes requests in order
+
+    return res.status(200).json({
+      success: true,
+      count: orders.length,
+      orders,
+    });
+  } catch (error) {
+    console.error('Error fetching pending counter orders:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching pending counter payment orders.' });
+  }
+};
+
+// Mark Counter Order as Paid & Generate Token (Admin Action)
+const markCounterOrderPaid = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order request not found.' });
+    }
+
+    // Idempotency check: if order is already marked paid, return friendly response
+    if (order.payment_status === 'paid') {
+      return res.status(200).json({
+        success: true,
+        message: 'Payment already confirmed for this order.',
+        token_number: order.token_number,
+        order,
+      });
+    }
+
+    if (order.payment_status !== 'awaiting_counter_payment') {
+      return res.status(400).json({
+        success: false,
+        message: `Order status is '${order.payment_status}' and cannot be marked paid at counter.`,
+      });
+    }
+
+    // Atomically generate token number from shared daily counter
+    const { tokenNumber, sequenceNumber } = await generateTokenNumber(order.meal_type, order.date);
+
+    order.payment_status = 'paid';
+    order.token_number = tokenNumber;
+    order.daily_sequence = sequenceNumber;
+    order.order_status = 'placed';
+    await order.save();
+
+    await order.populate('student_id', 'name roll_no email');
+
+    // Compute updated kitchen counts
+    const orderCounts = await computeKitchenOrderCounts(order.date);
+
+    // Broadcast live Socket.IO events to Kitchen & Student
+    const io = req.app.get('socketio');
+    if (io) {
+      const socketPayload = {
+        _id: order._id,
+        id: order._id,
+        token_number: order.token_number,
+        meal_type: order.meal_type,
+        items: order.items,
+        payment_status: order.payment_status,
+        student_name: order.student_id?.name || 'Student',
+        roll_no: order.student_id?.roll_no || '',
+        total_amount: order.total_amount,
+        order_status: order.order_status,
+        created_at: order.created_at,
+        orderCounts,
+      };
+
+      // Real-time update to Kitchen Screen
+      io.to('kitchen').emit('order:new', socketPayload);
+      io.to('kitchen').emit('order-counts-updated', socketPayload);
+
+      // Real-time update to specific Student room
+      io.to(`student:${order.student_id?._id || order.student_id}`).emit('student:order_updated', {
+        orderId: order._id,
+        token_number: order.token_number,
+        payment_status: 'paid',
+        order,
+      });
+    }
+
+    console.log(`[Counter Order Paid] Order ID: ${order._id}, Token: ${tokenNumber}`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Counter payment confirmed & token generated successfully!',
+      token_number: tokenNumber,
+      order,
+      orderCounts,
+    });
+  } catch (error) {
+    console.error('Error marking counter order as paid:', error);
+    return res.status(500).json({ success: false, message: 'Error marking counter payment as paid.' });
   }
 };
 
@@ -412,7 +504,7 @@ const computeKitchenOrderCounts = async (targetDate) => {
     {
       $match: {
         date: dateStr,
-        payment_status: { $in: ['paid', 'token_only'] },
+        payment_status: 'paid',
       },
     },
     {
@@ -458,7 +550,7 @@ const computeKitchenOrderCounts = async (targetDate) => {
     {
       $match: {
         date: dateStr,
-        payment_status: { $in: ['paid', 'token_only'] },
+        payment_status: 'paid',
       },
     },
     { $unwind: '$items' },
@@ -557,7 +649,7 @@ const getStudentOrders = async (req, res) => {
 
     const orders = await Order.find({
       student_id: req.studentId,
-      payment_status: { $in: ['paid', 'token_only'] },
+      payment_status: { $in: ['paid', 'awaiting_counter_payment'] },
       created_at: { $gte: cutoffDate },
     }).sort({ created_at: -1 });
 
@@ -576,7 +668,7 @@ const getStudentOrders = async (req, res) => {
 const getKitchenOrders = async (req, res) => {
   try {
     const { date, meal_type, status } = req.query;
-    const filter = { payment_status: { $in: ['paid', 'token_only'] } };
+    const filter = { payment_status: 'paid' };
 
     filter.date = date || new Date().toISOString().split('T')[0];
 
@@ -658,7 +750,9 @@ const updateOrderStatus = async (req, res) => {
 
 module.exports = {
   createRazorpayOrder,
-  createTokenOnlyOrder,
+  requestCounterPaymentOrder,
+  getPendingCounterOrders,
+  markCounterOrderPaid,
   verifyPaymentAndFulfill,
   razorpayWebhook,
   getStudentOrders,

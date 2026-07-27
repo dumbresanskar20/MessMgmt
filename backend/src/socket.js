@@ -42,9 +42,10 @@ const initSocketIO = (io) => {
 
     // Student Order Subscription
     socket.on('join:student', (studentId) => {
-      if (socket.userType === 'student' && socket.user?.id === studentId) {
-        socket.join(`student:${studentId}`);
-        console.log(`[Socket.IO] Student socket ${socket.id} joined room 'student:${studentId}'`);
+      const targetId = studentId || socket.user?.id || socket.user?.studentId;
+      if (targetId) {
+        socket.join(`student:${targetId}`);
+        console.log(`[Socket.IO] Student socket ${socket.id} joined room 'student:${targetId}'`);
       }
     });
 

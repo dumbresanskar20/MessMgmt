@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { io } from 'socket.io-client';
 import Header from './components/Header';
 import Hero3D from './components/Hero3D';
 import MenuCard from './components/MenuCard';
@@ -21,7 +22,7 @@ export default function App() {
     redirectNotice,
   } = useCart();
 
-  const { isAuthenticated, logout, openAuthModal } = useAuth();
+  const { student, isAuthenticated, logout, openAuthModal } = useAuth();
 
   const [menuItems, setMenuItems] = useState([]);
   const [loadingMenu, setLoadingMenu] = useState(true);
@@ -31,6 +32,38 @@ export default function App() {
   const [successToken, setSuccessToken] = useState(null);
   const [successOrder, setSuccessOrder] = useState(null);
   const [ordersModalOpen, setOrdersModalOpen] = useState(false);
+
+  // Real-time Socket.IO listener for live student order updates (when counter payment is marked paid)
+  useEffect(() => {
+    if (!isAuthenticated || !student) return;
+
+    const studentId = student._id || student.id;
+    const socketUrl =
+      import.meta.env.VITE_SOCKET_URL ||
+      (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') : 'https://messmgmt.onrender.com');
+
+    const socket = io(socketUrl, {
+      transports: ['websocket', 'polling'],
+    });
+
+    socket.on('connect', () => {
+      if (studentId) {
+        socket.emit('join:student', studentId);
+      }
+    });
+
+    socket.on('student:order_updated', (payload) => {
+      console.log('[Student Socket] Live order update received:', payload);
+      if (payload.token_number && payload.payment_status === 'paid') {
+        setSuccessToken(payload.token_number);
+        setSuccessOrder(payload.order || { token_number: payload.token_number, payment_status: 'paid' });
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [isAuthenticated, student]);
 
   // Check for reset_token in URL query parameters on mount
   useEffect(() => {
