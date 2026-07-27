@@ -42,22 +42,27 @@ const verifyAdmin = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.warn(`[verifyAdmin Auth Fail] Path: ${req.originalUrl} - No Bearer token provided in headers.`);
       return res.status(401).json({ success: false, message: 'Authentication required. No token provided.' });
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_access_key_change_in_production');
+    const jwtSecret = process.env.JWT_SECRET || 'super_secret_jwt_access_key_change_in_production';
+    const decoded = jwt.verify(token, jwtSecret);
 
     if (!['super_admin', 'staff'].includes(decoded.role)) {
+      console.warn(`[verifyAdmin Auth Fail] Path: ${req.originalUrl} - Invalid role: ${decoded.role}`);
       return res.status(403).json({ success: false, message: 'Forbidden. Admin access required.' });
     }
 
     const admin = await AdminUser.findById(decoded.id).select('-password_hash');
     if (!admin) {
+      console.warn(`[verifyAdmin Auth Fail] Path: ${req.originalUrl} - Admin ID ${decoded.id} not found in DB.`);
       return res.status(401).json({ success: false, message: 'Admin account not found.' });
     }
 
     if (!admin.is_active) {
+      console.warn(`[verifyAdmin Auth Fail] Path: ${req.originalUrl} - Admin account ${admin.username} is deactivated.`);
       return res.status(403).json({ success: false, message: 'Admin account is deactivated.' });
     }
 
@@ -65,6 +70,7 @@ const verifyAdmin = async (req, res, next) => {
     req.adminId = admin._id;
     next();
   } catch (error) {
+    console.warn(`[verifyAdmin Auth Fail] Path: ${req.originalUrl} - JWT error: ${error.name} (${error.message})`);
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ success: false, message: 'Token expired. Please login again.' });
     }

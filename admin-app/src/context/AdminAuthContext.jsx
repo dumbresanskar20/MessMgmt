@@ -39,6 +39,19 @@ export const AdminAuthProvider = ({ children }) => {
     }
   }, [admin]);
 
+  // Reset auth state if a 401 Unauthorized API error occurs
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setAdmin(null);
+      setToken(null);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('admin_auth_unauthorized', handleUnauthorized);
+      return () => window.removeEventListener('admin_auth_unauthorized', handleUnauthorized);
+    }
+  }, []);
+
   const login = async (usernameOrEmail, password) => {
     setLoading(true);
     try {

@@ -23,4 +23,20 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Response Interceptor: handle 401 Unauthorized errors by clearing stale token
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      console.warn('[Admin API] 401 Unauthorized encountered — clearing stale admin_token');
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_user');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('admin_auth_unauthorized'));
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;
