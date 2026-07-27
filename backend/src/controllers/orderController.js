@@ -178,6 +178,141 @@ const createRazorpayOrder = async (req, res) => {
   }
 };
 
+// Create Token-Only Order (No Payment required)
+const createTokenOnlyOrder = async (req, res) => {
+  try {
+    const { items, meal_type } = req.body;
+    const studentId = req.studentId; // Injected by verifyStudent middleware
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Cart items are required.' });
+    }
+
+    if (!meal_type || !['breakfast', 'lunch', 'dinner', 'snacks'].includes(meal_type.toLowerCase())) {
+      return res.status(400).json({ success: false, message: 'Valid meal_type is required.' });
+    }
+
+    const targetMealType = meal_type.toLowerCase();
+
+    // Check MealWindow status: Must be active and currently open for ordering
+    const windowDoc = await MealWindow.findOne({ meal_type: targetMealType });
+    if (windowDoc) {
+      const windowStatus = computeMealStatus(windowDoc);
+      if (!windowStatus.is_active) {
+        return res.status(400).json({
+          success: false,
+          message: `The meal category '${targetMealType.toUpperCase()}' is currently not offered by Canteen Management.`,
+        });
+      }
+      if (!windowStatus.is_currently_open) {
+        return res.status(400).json({
+          success: false,
+          message: `Ordering for ${targetMealType.toUpperCase()} is currently closed. Operating window: ${windowStatus.formatted_start_time} – ${windowStatus.formatted_end_time}.`,
+        });
+      }
+    }
+
+    // Verify item prices from DB to prevent client-side tampering
+    let calculatedTotal = 0;
+    const validatedItems = [];
+
+    for (const cartItem of items) {
+      const itemId = cartItem.menu_item || cartItem.id;
+      let dbItem = null;
+
+      if (itemId && mongoose.Types.ObjectId.isValid(itemId)) {
+        dbItem = await MenuItem.findById(itemId);
+      }
+
+      if (!dbItem && (cartItem.name || cartItem.item_name)) {
+        const nameToSearch = cartItem.name || cartItem.item_name;
+        dbItem = await MenuItem.findOne({ name: nameToSearch, is_active: true });
+      }
+
+      if (!dbItem || !dbItem.is_active) {
+        return res.status(400).json({
+          success: false,
+          message: `Item '${cartItem.name || cartItem.item_name || 'selected'}' is currently unavailable.`,
+        });
+      }
+
+      const itemQuantity = Number(cartItem.quantity) || 1;
+      const itemTotal = dbItem.price * itemQuantity;
+      calculatedTotal += itemTotal;
+
+      validatedItems.push({
+        menu_item: dbItem._id,
+        item_name: dbItem.name,
+        price: dbItem.price,
+        quantity: itemQuantity,
+      });
+    }
+
+    if (calculatedTotal <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid order total.' });
+    }
+
+    const todayDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // Generate atomic sequential Token Number from shared counter
+    const { tokenNumber, sequenceNumber } = await generateTokenNumber(targetMealType, todayDate);
+
+    // Save Order document with payment_status: 'token_only'
+    const newOrder = new Order({
+      student_id: studentId,
+      meal_type: targetMealType,
+      items: validatedItems,
+      total_amount: calculatedTotal,
+      payment_status: 'token_only',
+      razorpay_order_id: `token_only_${Date.now()}`,
+      token_number: tokenNumber,
+      daily_sequence: sequenceNumber,
+      order_status: 'placed',
+      date: todayDate,
+    });
+
+    await newOrder.save();
+    await newOrder.populate('student_id', 'name roll_no email');
+
+    // Compute updated order counts for live kitchen update
+    const orderCounts = await computeKitchenOrderCounts(newOrder.date);
+
+    // Broadcast live Socket.IO event to Kitchen Screen
+    const io = req.app.get('socketio');
+    if (io) {
+      const socketPayload = {
+        _id: newOrder._id,
+        id: newOrder._id,
+        token_number: newOrder.token_number,
+        meal_type: newOrder.meal_type,
+        items: newOrder.items,
+        payment_status: newOrder.payment_status,
+        student_name: newOrder.student_id?.name || 'Student',
+        roll_no: newOrder.student_id?.roll_no || '',
+        total_amount: newOrder.total_amount,
+        order_status: newOrder.order_status,
+        created_at: newOrder.created_at,
+        orderCounts,
+      };
+
+      io.to('kitchen').emit('order:new', socketPayload);
+      io.to('kitchen').emit('order-counts-updated', socketPayload);
+    }
+
+    console.log(`[Token Order Created] Token: ${tokenNumber}, Meal: ${targetMealType}, Payment: token_only`);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Token generated successfully!',
+      token_number: tokenNumber,
+      order: newOrder,
+    });
+  } catch (error) {
+    console.error('Create token order error:', error);
+    return res.status(500).json({ success: false, message: `Failed to generate order token: ${error.message}` });
+  }
+};
+
 // Verify Payment Signature & Fulfill Order
 const verifyPaymentAndFulfill = async (req, res) => {
   try {
@@ -277,7 +412,7 @@ const computeKitchenOrderCounts = async (targetDate) => {
     {
       $match: {
         date: dateStr,
-        payment_status: 'paid',
+        payment_status: { $in: ['paid', 'token_only'] },
       },
     },
     {
@@ -305,6 +440,7 @@ const computeKitchenOrderCounts = async (targetDate) => {
     snacks: { total_orders_today: 0, active_tokens: 0 },
     dinner: { total_orders_today: 0, active_tokens: 0 },
     combined: { total_orders_today: 0, active_tokens: 0 },
+    todays_menu_summary: [],
   };
 
   results.forEach((row) => {
@@ -316,6 +452,32 @@ const computeKitchenOrderCounts = async (targetDate) => {
     counts.combined.total_orders_today += row.total_orders_today;
     counts.combined.active_tokens += row.active_tokens;
   });
+
+  // Aggregation for Today's Menu Ordered Summary ("What's Cooking Today")
+  const summaryPipeline = [
+    {
+      $match: {
+        date: dateStr,
+        payment_status: { $in: ['paid', 'token_only'] },
+      },
+    },
+    { $unwind: '$items' },
+    {
+      $group: {
+        _id: '$items.item_name',
+        total_quantity: { $sum: '$items.quantity' },
+        total_orders: { $sum: 1 },
+      },
+    },
+    { $sort: { total_quantity: -1 } },
+  ];
+
+  const summaryResults = await Order.aggregate(summaryPipeline);
+  counts.todays_menu_summary = summaryResults.map((r) => ({
+    item_name: r._id,
+    total_quantity: r.total_quantity,
+    total_orders: r.total_orders,
+  }));
 
   return counts;
 };
@@ -395,7 +557,7 @@ const getStudentOrders = async (req, res) => {
 
     const orders = await Order.find({
       student_id: req.studentId,
-      payment_status: 'paid',
+      payment_status: { $in: ['paid', 'token_only'] },
       created_at: { $gte: cutoffDate },
     }).sort({ created_at: -1 });
 
@@ -414,7 +576,7 @@ const getStudentOrders = async (req, res) => {
 const getKitchenOrders = async (req, res) => {
   try {
     const { date, meal_type, status } = req.query;
-    const filter = { payment_status: 'paid' };
+    const filter = { payment_status: { $in: ['paid', 'token_only'] } };
 
     filter.date = date || new Date().toISOString().split('T')[0];
 
@@ -496,6 +658,7 @@ const updateOrderStatus = async (req, res) => {
 
 module.exports = {
   createRazorpayOrder,
+  createTokenOnlyOrder,
   verifyPaymentAndFulfill,
   razorpayWebhook,
   getStudentOrders,

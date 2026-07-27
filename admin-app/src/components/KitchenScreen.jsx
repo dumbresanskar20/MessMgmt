@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
-import { Wifi, WifiOff, RefreshCw, CheckCircle2, Clock, ChefHat, Check, ShoppingBag, User } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, CheckCircle2, Clock, ChefHat, Check, ShoppingBag, User, UtensilsCrossed } from 'lucide-react';
 import api from '../services/api';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
@@ -18,6 +18,7 @@ export default function KitchenScreen() {
     snacks: { total_orders_today: 0, active_tokens: 0 },
     dinner: { total_orders_today: 0, active_tokens: 0 },
     combined: { total_orders_today: 0, active_tokens: 0 },
+    todays_menu_summary: [],
   });
 
   // Fetch today's orders & summary counts
@@ -72,7 +73,7 @@ export default function KitchenScreen() {
       setConnected(false);
     });
 
-    // Real-time new paid order listener
+    // Real-time new order listener
     socket.on('order:new', (newOrder) => {
       setOrders((prev) => {
         const exists = prev.some((o) => o._id === newOrder._id || o._id === newOrder.id);
@@ -206,56 +207,98 @@ export default function KitchenScreen() {
       </div>
 
       {/* 3A. SUMMARY COUNTS (TOP OF SCREEN) */}
-      <div>
-        <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3 px-1">
-          Today's Order Summary
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          
-          {/* Combined Total Card */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Combined All Meals</span>
-            <div className="flex items-baseline justify-between pt-1">
-              <div>
-                <span className="text-2xl sm:text-3xl font-black text-slate-900 leading-none">
-                  {orderCounts.combined.total_orders_today}
-                </span>
-                <span className="block text-[10px] font-semibold text-slate-400 mt-1">Total Orders Today</span>
-              </div>
-              <div className="text-right">
-                <span className="text-2xl sm:text-3xl font-black text-amber-600 leading-none">
-                  {orderCounts.combined.active_tokens}
-                </span>
-                <span className="block text-[10px] font-bold text-amber-600 uppercase mt-1">Active Tokens</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Meal Specific Cards */}
-          {['breakfast', 'lunch', 'snacks', 'dinner'].map((meal) => {
-            const data = orderCounts[meal] || { total_orders_today: 0, active_tokens: 0 };
-            const label = meal.charAt(0).toUpperCase() + meal.slice(1);
-            return (
-              <div key={meal} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
-                <div className="flex items-baseline justify-between pt-1">
-                  <div>
-                    <span className="text-xl sm:text-2xl font-black text-slate-800 leading-none">
-                      {data.total_orders_today}
-                    </span>
-                    <span className="block text-[9px] font-semibold text-slate-400 mt-0.5">Total Paid</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xl sm:text-2xl font-black text-amber-600 leading-none">
-                      {data.active_tokens}
-                    </span>
-                    <span className="block text-[9px] font-bold text-amber-600 uppercase mt-0.5">Active</span>
-                  </div>
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3 px-1">
+            Today's Order Summary
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+            
+            {/* Combined Total Card */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Combined All Meals</span>
+              <div className="flex items-baseline justify-between pt-1">
+                <div>
+                  <span className="text-2xl sm:text-3xl font-black text-slate-900 leading-none">
+                    {orderCounts.combined.total_orders_today}
+                  </span>
+                  <span className="block text-[10px] font-semibold text-slate-400 mt-1">Total Orders Today</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-2xl sm:text-3xl font-black text-amber-600 leading-none">
+                    {orderCounts.combined.active_tokens}
+                  </span>
+                  <span className="block text-[10px] font-bold text-amber-600 uppercase mt-1">Active Tokens</span>
                 </div>
               </div>
-            );
-          })}
+            </div>
 
+            {/* Meal Specific Cards */}
+            {['breakfast', 'lunch', 'snacks', 'dinner'].map((meal) => {
+              const data = orderCounts[meal] || { total_orders_today: 0, active_tokens: 0 };
+              const label = meal.charAt(0).toUpperCase() + meal.slice(1);
+              return (
+                <div key={meal} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                  <div className="flex items-baseline justify-between pt-1">
+                    <div>
+                      <span className="text-xl sm:text-2xl font-black text-slate-800 leading-none">
+                        {data.total_orders_today}
+                      </span>
+                      <span className="block text-[9px] font-semibold text-slate-400 mt-0.5">Total Orders</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xl sm:text-2xl font-black text-amber-600 leading-none">
+                        {data.active_tokens}
+                      </span>
+                      <span className="block text-[9px] font-bold text-amber-600 uppercase mt-0.5">Active</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+          </div>
+        </div>
+
+        {/* NEW SUMMARY CARD: TODAY'S MENU ORDERED ("WHAT'S COOKING TODAY") */}
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <UtensilsCrossed className="w-4 h-4 text-brand-orange" />
+              <span>Today's Menu Ordered ("What's Cooking Today")</span>
+            </h3>
+            <span className="text-[11px] font-bold text-slate-400 uppercase">
+              {(orderCounts.todays_menu_summary || []).length} Unique Items
+            </span>
+          </div>
+
+          {(!orderCounts.todays_menu_summary || orderCounts.todays_menu_summary.length === 0) ? (
+            <div className="text-xs text-slate-400 font-medium py-4 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              No menu items ordered yet today.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {orderCounts.todays_menu_summary.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="p-3.5 bg-gradient-to-br from-amber-50/70 to-orange-50/40 rounded-2xl border border-amber-200/80 flex flex-col justify-between space-y-2"
+                >
+                  <span className="text-xs font-extrabold text-slate-900 line-clamp-1" title={item.item_name}>
+                    {item.item_name}
+                  </span>
+                  <div className="flex items-baseline justify-between pt-1 border-t border-amber-200/50">
+                    <span className="text-2xl font-black text-brand-orange leading-none">
+                      {item.total_quantity}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">
+                      {item.total_quantity === 1 ? 'unit' : 'units'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -309,9 +352,7 @@ export default function KitchenScreen() {
             {activeTokenList.map((ord) => {
               const studentName = ord.student_id?.name || ord.student_name || 'Student';
               const rollNo = ord.student_id?.roll_no || '';
-              const itemsList = (ord.items || [])
-                .map((i) => `${i.quantity}x ${i.item_name || i.name}`)
-                .join(', ');
+              const isTokenOnly = ord.payment_status === 'token_only';
 
               return (
                 <div
@@ -319,7 +360,7 @@ export default function KitchenScreen() {
                   className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors"
                 >
                   {/* Left: Token Number & Student Info */}
-                  <div className="flex items-center gap-4 sm:gap-6 min-w-0">
+                  <div className="flex items-center gap-4 sm:gap-6 min-w-0 flex-1">
                     
                     {/* Prominent Token Number */}
                     <div className="w-20 sm:w-24 h-14 sm:h-16 rounded-2xl bg-amber-500 text-white font-black text-2xl sm:text-3xl flex items-center justify-center tracking-tight shadow-md shrink-0">
@@ -327,7 +368,7 @@ export default function KitchenScreen() {
                     </div>
 
                     {/* Student & Order Details */}
-                    <div className="space-y-1 min-w-0">
+                    <div className="space-y-1.5 min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-extrabold text-base sm:text-lg text-slate-900 truncate">
                           {studentName}
@@ -340,15 +381,29 @@ export default function KitchenScreen() {
                         <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
                           {ord.meal_type}
                         </span>
+
+                        {/* Payment Status Badge */}
+                        <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md ${
+                          isTokenOnly ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {isTokenOnly ? 'Token Only' : 'Paid'}
+                        </span>
                       </div>
 
-                      {/* Items Summary */}
-                      <p className="text-xs font-semibold text-slate-600 truncate max-w-xl">
-                        {itemsList || 'Meal items'}
-                      </p>
+                      {/* Items Summary Pills */}
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {(ord.items || []).map((it, idx) => (
+                          <span
+                            key={idx}
+                            className="bg-slate-100 text-slate-800 text-xs font-bold px-2.5 py-1 rounded-lg border border-slate-200"
+                          >
+                            {it.quantity}x {it.item_name || it.name}
+                          </span>
+                        ))}
+                      </div>
 
                       {/* Time Placed */}
-                      <p className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
+                      <p className="text-[11px] text-slate-400 flex items-center gap-1 font-medium pt-0.5">
                         <Clock className="w-3 h-3" />
                         <span>Placed at {new Date(ord.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </p>

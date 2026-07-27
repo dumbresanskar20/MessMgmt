@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
+import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, ShieldCheck, AlertCircle, Ticket } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -9,9 +9,46 @@ export default function CartDrawer({ onOrderSuccess }) {
   const { cartItems, cartTotal, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity, selectedMealType, clearCart } = useCart();
   const { student, isAuthenticated, openAuthModal } = useAuth();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [tokenLoading, setTokenLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   if (!isCartOpen) return null;
+
+  // New Token-Only Order Creation (No payment step required)
+  const handleGenerateTokenOnlyOrder = async () => {
+    setErrorMessage('');
+
+    // Check auth boundary: If user is not logged in, prompt Auth Modal and preserve cart
+    if (!isAuthenticated) {
+      openAuthModal(true);
+      return;
+    }
+
+    if (cartItems.length === 0) return;
+
+    setTokenLoading(true);
+
+    try {
+      console.log('[Token Order] Initiating token-only order creation...');
+      const res = await api.post('/orders/create-token-order', {
+        items: cartItems,
+        meal_type: selectedMealType,
+      });
+
+      if (res.data.success) {
+        clearCart();
+        setIsCartOpen(false);
+        onOrderSuccess(res.data.token_number, res.data.order);
+      } else {
+        setErrorMessage(res.data.message || 'Failed to generate token.');
+      }
+    } catch (err) {
+      console.error('Token generation error:', err);
+      setErrorMessage(err.response?.data?.message || err.message || 'Failed to generate order token.');
+    } finally {
+      setTokenLoading(false);
+    }
+  };
 
   const handleProceedToPay = async () => {
     setErrorMessage('');
@@ -285,22 +322,47 @@ export default function CartDrawer({ onOrderSuccess }) {
                 </div>
               </div>
 
-              {/* Direct Razorpay Checkout Action */}
-              <button
-                onClick={handleProceedToPay}
-                disabled={checkoutLoading}
-                className="w-full py-3.5 bg-gradient-to-r from-brand-orange to-amber-600 hover:from-amber-600 hover:to-brand-orange text-white font-extrabold rounded-2xl text-sm shadow-warm hover:shadow-cardHover transition-all flex items-center justify-center gap-2"
-              >
-                {checkoutLoading ? (
-                  <span>Initiating Razorpay...</span>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-5 h-5" />
-                    <span>Proceed to Pay (₹{cartTotal})</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+              {/* Dual Checkout Action Buttons */}
+              <div className="space-y-2.5">
+                {/* 1. Pay with Razorpay */}
+                <button
+                  onClick={handleProceedToPay}
+                  disabled={checkoutLoading || tokenLoading}
+                  className="w-full py-3.5 bg-gradient-to-r from-brand-orange to-amber-600 hover:from-amber-600 hover:to-brand-orange text-white font-extrabold rounded-2xl text-xs sm:text-sm shadow-warm hover:shadow-cardHover transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {checkoutLoading ? (
+                    <span>Initiating Razorpay...</span>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-4 h-4 shrink-0" />
+                      <span>Pay via Razorpay (₹{cartTotal})</span>
+                      <ArrowRight className="w-4 h-4 shrink-0" />
+                    </>
+                  )}
+                </button>
+                <p className="text-[10px] text-center text-stone-400 font-medium -mt-1">
+                  Pay online and get your token instantly
+                </p>
+
+                {/* 2. Generate Token Only (No Payment) */}
+                <button
+                  onClick={handleGenerateTokenOnlyOrder}
+                  disabled={checkoutLoading || tokenLoading}
+                  className="w-full py-3.5 bg-stone-900 hover:bg-stone-800 text-white font-extrabold rounded-2xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer border border-stone-700 disabled:opacity-50"
+                >
+                  {tokenLoading ? (
+                    <span>Generating Token...</span>
+                  ) : (
+                    <>
+                      <Ticket className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>Generate Token (No Payment)</span>
+                    </>
+                  )}
+                </button>
+                <p className="text-[10px] text-center text-stone-400 font-medium -mt-1">
+                  Skip online payment — generate token with QR code
+                </p>
+              </div>
             </div>
           )}
 
