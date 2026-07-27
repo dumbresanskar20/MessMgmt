@@ -3,15 +3,20 @@ const jwt = require('jsonwebtoken');
 const initSocketIO = (io) => {
   // Middleware to authenticate socket connections via JWT token
   io.use((socket, next) => {
-    const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-    if (!token) {
+    let rawToken = socket.handshake.auth?.token || socket.handshake.query?.token;
+
+    if (!rawToken) {
       // Allow anonymous connection for non-sensitive public events if any
       socket.userType = 'anonymous';
       return next();
     }
 
+    if (typeof rawToken === 'string') {
+      rawToken = rawToken.replace(/^Bearer\s+/i, '').trim();
+    }
+
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_access_key_change_in_production');
+      const decoded = jwt.verify(rawToken, process.env.JWT_SECRET || 'super_secret_jwt_access_key_change_in_production');
       socket.user = decoded;
       if (['super_admin', 'staff'].includes(decoded.role)) {
         socket.userType = 'admin';
@@ -20,7 +25,7 @@ const initSocketIO = (io) => {
       }
       return next();
     } catch (err) {
-      console.warn(`[Socket.IO] Auth verification failed for socket ${socket.id}: ${err.message}`);
+      console.warn(`[Socket.IO Auth Error] Socket ${socket.id} verification failed: ${err.message}`);
       socket.userType = 'anonymous';
       return next();
     }

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { io } from 'socket.io-client';
 import { Wifi, WifiOff, RefreshCw, CheckCircle2, Clock, ChefHat, Check, ShoppingBag, User, UtensilsCrossed } from 'lucide-react';
 import api from '../services/api';
 import { useAdminAuth } from '../context/AdminAuthContext';
+import { createAdminSocketClient } from '../services/socket';
 
 export default function KitchenScreen() {
   const { token } = useAdminAuth();
@@ -55,14 +55,7 @@ export default function KitchenScreen() {
   useEffect(() => {
     fetchKitchenData();
 
-    const socketUrl =
-      import.meta.env.VITE_SOCKET_URL ||
-      (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') : 'https://messmgmt.onrender.com');
-
-    const socket = io(socketUrl, {
-      auth: { token },
-      transports: ['websocket', 'polling'],
-    });
+    const socket = createAdminSocketClient(token);
 
     socket.on('connect', () => {
       setConnected(true);

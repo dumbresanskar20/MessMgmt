@@ -63,8 +63,23 @@ app.use(express.urlencoded({ extended: true }));
 // Socket.IO Setup
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const normalizedOrigin = cleanOrigin(origin);
+      const isAllowed =
+        allowedOrigins.includes(normalizedOrigin) ||
+        normalizedOrigin.endsWith('.vercel.app') ||
+        process.env.NODE_ENV !== 'production';
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        console.warn(`[Socket.IO CORS] BLOCKED incoming origin: ${origin}`);
+        callback(new Error(`Not allowed by Socket.IO CORS: ${origin}`));
+      }
+    },
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 

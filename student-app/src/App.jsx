@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { io } from 'socket.io-client';
 import Header from './components/Header';
 import Hero3D from './components/Hero3D';
 import MenuCard from './components/MenuCard';
@@ -11,6 +10,7 @@ import { useCart } from './context/CartContext';
 import { useAuth } from './context/AuthContext';
 import { Utensils, Heart, Clock, AlertCircle, Info } from 'lucide-react';
 import api from './services/api';
+import { createSocketClient } from './services/socket';
 
 export default function App() {
   const {
@@ -38,13 +38,7 @@ export default function App() {
     if (!isAuthenticated || !student) return;
 
     const studentId = student._id || student.id;
-    const socketUrl =
-      import.meta.env.VITE_SOCKET_URL ||
-      (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') : 'https://messmgmt.onrender.com');
-
-    const socket = io(socketUrl, {
-      transports: ['websocket', 'polling'],
-    });
+    const socket = createSocketClient();
 
     socket.on('connect', () => {
       if (studentId) {

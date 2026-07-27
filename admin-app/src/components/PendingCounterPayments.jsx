@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { io } from 'socket.io-client';
 import { Store, RefreshCw, Check, Clock, User, AlertCircle, Sparkles } from 'lucide-react';
 import api from '../services/api';
 import { useAdminAuth } from '../context/AdminAuthContext';
+import { createAdminSocketClient } from '../services/socket';
 
 export default function PendingCounterPayments() {
   const { token } = useAdminAuth();
@@ -27,14 +27,7 @@ export default function PendingCounterPayments() {
   useEffect(() => {
     fetchPendingOrders();
 
-    const socketUrl =
-      import.meta.env.VITE_SOCKET_URL ||
-      (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') : 'https://messmgmt.onrender.com');
-
-    const socket = io(socketUrl, {
-      auth: { token },
-      transports: ['websocket', 'polling'],
-    });
+    const socket = createAdminSocketClient(token);
 
     socket.on('connect', () => {
       socket.emit('join:kitchen');
