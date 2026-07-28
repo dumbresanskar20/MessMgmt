@@ -322,6 +322,7 @@ const getPendingCounterOrders = async (req, res) => {
 const markCounterOrderPaid = async (req, res) => {
   try {
     const { id } = req.params;
+    const { payment_method } = req.body || {};
 
     const order = await Order.findById(id);
     if (!order) {
@@ -349,6 +350,9 @@ const markCounterOrderPaid = async (req, res) => {
     const { tokenNumber, sequenceNumber } = await generateTokenNumber(order.meal_type, order.date);
 
     order.payment_status = 'paid';
+    order.payment_method = ['counter_cash', 'counter_upi', 'other'].includes(payment_method)
+      ? payment_method
+      : 'counter_cash';
     order.token_number = tokenNumber;
     order.daily_sequence = sequenceNumber;
     order.order_status = 'placed';
@@ -452,6 +456,7 @@ const verifyPaymentAndFulfill = async (req, res) => {
     const { tokenNumber, sequenceNumber } = await generateTokenNumber(order.meal_type, order.date);
 
     order.payment_status = 'paid';
+    order.payment_method = 'razorpay';
     order.razorpay_payment_id = razorpay_payment_id || `pay_mock_${Date.now()}`;
     order.razorpay_signature = razorpay_signature || 'mock_sig';
     order.token_number = tokenNumber;
@@ -615,6 +620,7 @@ const razorpayWebhook = async (req, res) => {
       if (order && order.payment_status !== 'paid') {
         const { tokenNumber, sequenceNumber } = await generateTokenNumber(order.meal_type, order.date);
         order.payment_status = 'paid';
+        order.payment_method = 'razorpay';
         order.razorpay_payment_id = paymentEntity.id;
         order.token_number = tokenNumber;
         order.daily_sequence = sequenceNumber;
@@ -746,6 +752,234 @@ const updateOrderStatus = async (req, res) => {
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Error updating order status.' });
   }
+// Get Admin Order History (Paginated, Filterable, Role-Based Field Stripping for Staff)
+const getAdminOrderHistory = async (req, res) => {
+  try {
+    const {
+      from,
+      to,
+      meal_type,
+      order_status,
+      payment_status,
+      page = 1,
+      limit = 50,
+    } = req.query;
+
+    const retentionDays = parseInt(process.env.ORDER_RETENTION_DAYS, 10) || 60;
+    const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const skip = (pageNum - 1) * limitNum;
+
+    const filter = {
+      created_at: { $gte: cutoffDate },
+    };
+
+    if (from || to) {
+      filter.date = {};
+      if (from) filter.date.$gte = from;
+      if (to) filter.date.$lte = to;
+    }
+
+    if (meal_type) filter.meal_type = meal_type.toLowerCase();
+    if (order_status) filter.order_status = order_status.toLowerCase();
+    if (payment_status) filter.payment_status = payment_status.toLowerCase();
+
+    const totalCount = await Order.countDocuments(filter);
+    const orders = await Order.find(filter)
+      .populate('student_id', 'name roll_no email')
+      .sort({ created_at: -1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    const isSuperAdmin = req.admin && req.admin.role === 'super_admin';
+
+    // Server-side field stripping: Non-super_admin (staff) accounts must never receive financial fields
+    const sanitizedOrders = orders.map((order) => {
+      const obj = order.toObject ? order.toObject() : { ...order };
+      if (!isSuperAdmin) {
+        delete obj.total_amount;
+        delete obj.payment_method;
+        if (Array.isArray(obj.items)) {
+          obj.items = obj.items.map((item) => {
+            const { price, ...rest } = item;
+            return rest;
+          });
+        }
+      }
+      return obj;
+    });
+
+    // Income summary for range (calculated ONLY for super_admin)
+    let incomeSummary = null;
+    if (isSuperAdmin) {
+      const incomeFilter = { ...filter, payment_status: 'paid' };
+      const aggregation = await Order.aggregate([
+        { $match: incomeFilter },
+        {
+          $group: {
+            _id: { $ifNull: ['$payment_method', 'counter_cash'] },
+            total_amount: { $sum: '$total_amount' },
+            order_count: { $sum: 1 },
+          },
+        },
+      ]);
+
+      let totalIncome = 0;
+      let totalPaidOrders = 0;
+      const breakdown = {
+        razorpay: { amount: 0, count: 0 },
+        counter_cash: { amount: 0, count: 0 },
+        counter_upi: { amount: 0, count: 0 },
+        other: { amount: 0, count: 0 },
+      };
+
+      aggregation.forEach((row) => {
+        const method = row._id || 'counter_cash';
+        if (!breakdown[method]) breakdown[method] = { amount: 0, count: 0 };
+        breakdown[method].amount += row.total_amount;
+        breakdown[method].count += row.order_count;
+        totalIncome += row.total_amount;
+        totalPaidOrders += row.order_count;
+      });
+
+      incomeSummary = {
+        total_income: totalIncome,
+        total_paid_orders: totalPaidOrders,
+        breakdown,
+      };
+    }
+
+    return res.status(200).json({
+      success: true,
+      page: pageNum,
+      limit: limitNum,
+      total_pages: Math.ceil(totalCount / limitNum) || 1,
+      total_count: totalCount,
+      is_super_admin: isSuperAdmin,
+      income_summary: incomeSummary,
+      orders: sanitizedOrders,
+    });
+  } catch (error) {
+    console.error('Error fetching admin order history:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching order history.' });
+  }
+};
+
+// Get Today's Total Income & Payment Method Breakdown (Strictly Super Admin Only)
+const getTodayIncome = async (req, res) => {
+  try {
+    const todayDate = new Date().toISOString().split('T')[0];
+    const aggregation = await Order.aggregate([
+      {
+        $match: {
+          date: todayDate,
+          payment_status: 'paid',
+        },
+      },
+      {
+        $group: {
+          _id: { $ifNull: ['$payment_method', 'counter_cash'] },
+          total_amount: { $sum: '$total_amount' },
+          order_count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    let totalIncome = 0;
+    let totalPaidOrders = 0;
+    const breakdown = {
+      razorpay: { amount: 0, count: 0 },
+      counter_cash: { amount: 0, count: 0 },
+      counter_upi: { amount: 0, count: 0 },
+      other: { amount: 0, count: 0 },
+    };
+
+    aggregation.forEach((row) => {
+      const method = row._id || 'counter_cash';
+      if (!breakdown[method]) breakdown[method] = { amount: 0, count: 0 };
+      breakdown[method].amount += row.total_amount;
+      breakdown[method].count += row.order_count;
+      totalIncome += row.total_amount;
+      totalPaidOrders += row.order_count;
+    });
+
+    return res.status(200).json({
+      success: true,
+      date: todayDate,
+      total_income: totalIncome,
+      total_paid_orders: totalPaidOrders,
+      breakdown,
+    });
+  } catch (error) {
+    console.error('Error fetching today income:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching today income.' });
+  }
+};
+
+// Get Income History for Date Range & Payment Method Breakdown (Strictly Super Admin Only)
+const getIncomeHistory = async (req, res) => {
+  try {
+    const { from, to, meal_type } = req.query;
+    const retentionDays = parseInt(process.env.ORDER_RETENTION_DAYS, 10) || 60;
+    const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+
+    const filter = {
+      payment_status: 'paid',
+      created_at: { $gte: cutoffDate },
+    };
+
+    if (from || to) {
+      filter.date = {};
+      if (from) filter.date.$gte = from;
+      if (to) filter.date.$lte = to;
+    }
+
+    if (meal_type) filter.meal_type = meal_type.toLowerCase();
+
+    const aggregation = await Order.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: { $ifNull: ['$payment_method', 'counter_cash'] },
+          total_amount: { $sum: '$total_amount' },
+          order_count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    let totalIncome = 0;
+    let totalPaidOrders = 0;
+    const breakdown = {
+      razorpay: { amount: 0, count: 0 },
+      counter_cash: { amount: 0, count: 0 },
+      counter_upi: { amount: 0, count: 0 },
+      other: { amount: 0, count: 0 },
+    };
+
+    aggregation.forEach((row) => {
+      const method = row._id || 'counter_cash';
+      if (!breakdown[method]) breakdown[method] = { amount: 0, count: 0 };
+      breakdown[method].amount += row.total_amount;
+      breakdown[method].count += row.order_count;
+      totalIncome += row.total_amount;
+      totalPaidOrders += row.order_count;
+    });
+
+    return res.status(200).json({
+      success: true,
+      from: from || null,
+      to: to || null,
+      meal_type: meal_type || null,
+      total_income: totalIncome,
+      total_paid_orders: totalPaidOrders,
+      breakdown,
+    });
+  } catch (error) {
+    console.error('Error fetching income history:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching income history.' });
+  }
 };
 
 module.exports = {
@@ -759,4 +993,7 @@ module.exports = {
   getKitchenOrders,
   getKitchenOrderCounts,
   updateOrderStatus,
+  getAdminOrderHistory,
+  getTodayIncome,
+  getIncomeHistory,
 };

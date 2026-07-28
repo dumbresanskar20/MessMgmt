@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import KitchenScreen from './components/KitchenScreen';
 import PendingCounterPayments from './components/PendingCounterPayments';
+import OrderHistoryScreen from './components/OrderHistoryScreen';
 import MenuManagement from './components/MenuManagement';
 import MealTimings from './components/MealTimings';
 import StaffManagement from './components/StaffManagement';
@@ -27,6 +28,7 @@ export default function App() {
       <main className="flex-1 overflow-y-auto min-w-0">
         {activeTab === 'kitchen' && <KitchenScreen />}
         {activeTab === 'counter' && <PendingCounterPayments />}
+        {activeTab === 'history' && <OrderHistoryScreen />}
         {activeTab === 'menu' && <MenuManagement />}
         {activeTab === 'timings' && <MealTimings />}
         {activeTab === 'staff' && isSuperAdmin && <StaffManagement />}

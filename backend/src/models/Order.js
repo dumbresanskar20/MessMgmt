@@ -43,6 +43,11 @@ const orderSchema = new mongoose.Schema(
       enum: ['pending', 'paid', 'failed', 'awaiting_counter_payment'],
       default: 'pending',
     },
+    payment_method: {
+      type: String,
+      enum: ['razorpay', 'counter_cash', 'counter_upi', 'other'],
+      default: null,
+    },
     razorpay_order_id: {
       type: String,
       default: null,
@@ -80,6 +85,7 @@ const orderSchema = new mongoose.Schema(
 
 orderSchema.index({ student_id: 1, date: 1 });
 orderSchema.index({ date: 1, meal_type: 1, payment_status: 1 });
+orderSchema.index({ date: 1, payment_status: 1, payment_method: 1 });
 orderSchema.index({ order_status: 1 });
 
 module.exports = mongoose.model('Order', orderSchema);

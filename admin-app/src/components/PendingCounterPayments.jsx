@@ -54,7 +54,7 @@ export default function PendingCounterPayments() {
     };
   }, [token]);
 
-  const handleMarkPaid = async (orderId) => {
+  const handleMarkPaid = async (orderId, paymentMethod = 'counter_cash') => {
     if (processingId) return; // Prevent concurrent/double clicks
     setProcessingId(orderId);
 
@@ -63,9 +63,9 @@ export default function PendingCounterPayments() {
     setOrders((prev) => prev.filter((o) => (o._id || o.id) !== orderId));
 
     try {
-      const res = await api.patch(`/orders/mark-counter-paid/${orderId}`);
+      const res = await api.patch(`/orders/mark-counter-paid/${orderId}`, { payment_method: paymentMethod });
       if (res.data.success) {
-        console.log(`[Counter Paid Success] Generated Token: ${res.data.token_number}`);
+        console.log(`[Counter Paid Success] Generated Token: ${res.data.token_number} (${paymentMethod})`);
       } else {
         alert(res.data.message || 'Failed to mark payment as paid.');
         setOrders(previousOrders);
@@ -182,14 +182,26 @@ export default function PendingCounterPayments() {
                       </span>
                     </div>
 
-                    <button
-                      onClick={() => handleMarkPaid(orderId)}
-                      disabled={isProcessing}
-                      className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-sm rounded-2xl shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      <Check className="w-5 h-5 stroke-[3]" />
-                      <span>{isProcessing ? 'MARKING PAID...' : 'MARK AS PAID'}</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleMarkPaid(orderId, 'counter_cash')}
+                        disabled={isProcessing}
+                        className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs rounded-2xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        title="Mark Paid via Cash"
+                      >
+                        <Check className="w-4 h-4 stroke-[3]" />
+                        <span>{isProcessing ? 'MARKING...' : 'PAID CASH'}</span>
+                      </button>
+                      <button
+                        onClick={() => handleMarkPaid(orderId, 'counter_upi')}
+                        disabled={isProcessing}
+                        className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-xs rounded-2xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        title="Mark Paid via Counter UPI"
+                      >
+                        <Check className="w-4 h-4 stroke-[3]" />
+                        <span>{isProcessing ? 'MARKING...' : 'PAID UPI'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );

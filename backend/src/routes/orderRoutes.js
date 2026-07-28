@@ -11,8 +11,11 @@ const {
   getKitchenOrders,
   getKitchenOrderCounts,
   updateOrderStatus,
+  getAdminOrderHistory,
+  getTodayIncome,
+  getIncomeHistory,
 } = require('../controllers/orderController');
-const { verifyStudent, verifyAdmin } = require('../middleware/authMiddleware');
+const { verifyStudent, verifyAdmin, requireRole } = require('../middleware/authMiddleware');
 
 // Student endpoints (STRICT STUDENT JWT ENFORCED)
 router.post('/create-razorpay-order', verifyStudent, createRazorpayOrder);
@@ -29,5 +32,15 @@ router.get('/kitchen-order-counts', verifyAdmin, getKitchenOrderCounts);
 router.get('/pending-counter-payments', verifyAdmin, getPendingCounterOrders);
 router.patch('/mark-counter-paid/:id', verifyAdmin, markCounterOrderPaid);
 router.patch('/status/:id', verifyAdmin, updateOrderStatus);
+
+// Admin Order History (Accessible to both super_admin and staff)
+router.get('/history', verifyAdmin, getAdminOrderHistory);
+router.get('/admin/orders/history', verifyAdmin, getAdminOrderHistory);
+
+// Super Admin Income Endpoints (Strictly restricted to super_admin role via requireRole)
+router.get('/income/today', verifyAdmin, requireRole('super_admin'), getTodayIncome);
+router.get('/admin/income/today', verifyAdmin, requireRole('super_admin'), getTodayIncome);
+router.get('/income/history', verifyAdmin, requireRole('super_admin'), getIncomeHistory);
+router.get('/admin/income/history', verifyAdmin, requireRole('super_admin'), getIncomeHistory);
 
 module.exports = router;

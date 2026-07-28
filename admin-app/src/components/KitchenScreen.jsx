@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Wifi, WifiOff, RefreshCw, CheckCircle2, Clock, ChefHat, Check, ShoppingBag, User, UtensilsCrossed } from 'lucide-react';
+import { Wifi, WifiOff, RefreshCw, CheckCircle2, Clock, ChefHat, Check, ShoppingBag, User, UtensilsCrossed, CreditCard, Banknote, QrCode, Receipt } from 'lucide-react';
 import api from '../services/api';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { createAdminSocketClient } from '../services/socket';
 
 export default function KitchenScreen() {
-  const { token } = useAdminAuth();
+  const { token, isSuperAdmin } = useAdminAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
   const [selectedMeal, setSelectedMeal] = useState('all'); // 'all' | 'breakfast' | 'lunch' | 'snacks' | 'dinner'
+  const [todayIncome, setTodayIncome] = useState(null);
   
   // Summary counts state
   const [orderCounts, setOrderCounts] = useState({
@@ -43,6 +44,17 @@ export default function KitchenScreen() {
 
       if (countsRes.data.success && countsRes.data.orderCounts) {
         setOrderCounts(countsRes.data.orderCounts);
+      }
+
+      if (isSuperAdmin) {
+        try {
+          const incRes = await api.get('/orders/income/today');
+          if (incRes.data.success) {
+            setTodayIncome(incRes.data);
+          }
+        } catch (e) {
+          console.warn('Income fetch error:', e);
+        }
       }
     } catch (err) {
       console.error('Kitchen data fetch error:', err);
@@ -198,6 +210,46 @@ export default function KitchenScreen() {
           </div>
         </div>
       </div>
+
+      {/* SUPER ADMIN ONLY: TODAY'S INCOME SUMMARY WIDGET */}
+      {isSuperAdmin && todayIncome && (
+        <div className="bg-slate-900 text-white rounded-3xl p-5 border border-slate-800 shadow-md space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">
+              Super Admin Analytics • Today's Revenue
+            </span>
+            <span className="text-2xl font-black text-white">
+              ₹{(todayIncome.total_income || 0).toLocaleString('en-IN')}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+            <div className="bg-slate-800/90 p-3 rounded-2xl border border-slate-700/80">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Razorpay (Online)</span>
+              <span className="text-base font-black text-white">₹{(todayIncome.breakdown?.razorpay?.amount || 0).toLocaleString('en-IN')}</span>
+              <span className="text-[10px] text-slate-400 block font-semibold">({todayIncome.breakdown?.razorpay?.count || 0} orders)</span>
+            </div>
+
+            <div className="bg-slate-800/90 p-3 rounded-2xl border border-slate-700/80">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Counter Cash</span>
+              <span className="text-base font-black text-white">₹{(todayIncome.breakdown?.counter_cash?.amount || 0).toLocaleString('en-IN')}</span>
+              <span className="text-[10px] text-slate-400 block font-semibold">({todayIncome.breakdown?.counter_cash?.count || 0} orders)</span>
+            </div>
+
+            <div className="bg-slate-800/90 p-3 rounded-2xl border border-slate-700/80">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Counter UPI</span>
+              <span className="text-base font-black text-white">₹{(todayIncome.breakdown?.counter_upi?.amount || 0).toLocaleString('en-IN')}</span>
+              <span className="text-[10px] text-slate-400 block font-semibold">({todayIncome.breakdown?.counter_upi?.count || 0} orders)</span>
+            </div>
+
+            <div className="bg-slate-800/90 p-3 rounded-2xl border border-slate-700/80">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Other</span>
+              <span className="text-base font-black text-white">₹{(todayIncome.breakdown?.other?.amount || 0).toLocaleString('en-IN')}</span>
+              <span className="text-[10px] text-slate-400 block font-semibold">({todayIncome.breakdown?.other?.count || 0} orders)</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 3A. SUMMARY COUNTS (TOP OF SCREEN) */}
       <div className="space-y-4">
