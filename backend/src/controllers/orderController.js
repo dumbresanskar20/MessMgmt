@@ -752,6 +752,7 @@ const updateOrderStatus = async (req, res) => {
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Error updating order status.' });
   }
+};
 // Get Admin Order History (Paginated, Filterable, Role-Based Field Stripping for Staff)
 const getAdminOrderHistory = async (req, res) => {
   try {
