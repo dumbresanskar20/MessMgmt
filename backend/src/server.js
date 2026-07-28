@@ -93,7 +93,7 @@ const { apiLimiter } = require('./middleware/rateLimiter');
 // API Routes (supports both /api/ prefix and fallback paths)
 app.use(['/api/auth/student', '/auth/student'], require('./routes/studentAuthRoutes'));
 app.use(['/api/auth/admin', '/auth/admin'], require('./routes/adminAuthRoutes'));
-app.use(['/api/menu', '/menu'], apiLimiter, require('./routes/menuRoutes'));
+app.use(['/api/menu', '/menu', '/api/admin/menu-items', '/admin/menu-items'], apiLimiter, require('./routes/menuRoutes'));
 app.use(['/api/orders', '/orders'], apiLimiter, require('./routes/orderRoutes'));
 
 // Health check endpoint

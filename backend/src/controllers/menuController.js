@@ -49,6 +49,7 @@ const computeMealStatus = (w, currentTime = getCurrentTimeHHMM()) => {
 const getMenuItems = async (req, res) => {
   try {
     const { meal_type, active_only } = req.query;
+    const isStudentFetch = active_only === 'true';
 
     const windows = await MealWindow.find();
     const currentTime = getCurrentTimeHHMM();
@@ -69,7 +70,8 @@ const getMenuItems = async (req, res) => {
       const targetType = meal_type.toLowerCase();
       const status = windowMap[targetType] || { is_active: true, is_currently_open: true };
 
-      if (!status.is_active) {
+      // Student App: Hide items if meal type is deactivated by canteen management
+      if (isStudentFetch && !status.is_active) {
         return res.status(200).json({
           success: true,
           count: 0,
@@ -82,7 +84,7 @@ const getMenuItems = async (req, res) => {
 
       filter.meal_type = targetType;
 
-      if (active_only === 'true') {
+      if (isStudentFetch) {
         filter.is_active = true;
       }
 
@@ -97,8 +99,8 @@ const getMenuItems = async (req, res) => {
         meal_window: status,
       });
     } else {
-      filter.meal_type = { $in: activeTypes };
-      if (active_only === 'true') {
+      if (isStudentFetch) {
+        filter.meal_type = { $in: activeTypes };
         filter.is_active = true;
       }
 
@@ -132,6 +134,15 @@ const createMenuItem = async (req, res) => {
       cloudinaryPublicId = req.file.filename || req.file.public_id;
     }
 
+    let parsedIsActive = true;
+    if (is_active !== undefined) {
+      if (typeof is_active === 'string') {
+        parsedIsActive = is_active.toLowerCase() === 'true' || is_active === '1';
+      } else {
+        parsedIsActive = Boolean(is_active);
+      }
+    }
+
     const item = new MenuItem({
       name: name.trim(),
       image_url: finalImageUrl,
@@ -139,7 +150,7 @@ const createMenuItem = async (req, res) => {
       meal_type: meal_type.toLowerCase(),
       price: Number(price),
       description: description || '',
-      is_active: is_active !== undefined ? (is_active === 'true' || is_active === true) : true,
+      is_active: parsedIsActive,
     });
 
     await item.save();
@@ -173,7 +184,11 @@ const updateMenuItem = async (req, res) => {
       updates.price = Number(updates.price);
     }
     if (updates.is_active !== undefined) {
-      updates.is_active = updates.is_active === 'true' || updates.is_active === true;
+      if (typeof updates.is_active === 'string') {
+        updates.is_active = updates.is_active.toLowerCase() === 'true' || updates.is_active === '1';
+      } else {
+        updates.is_active = Boolean(updates.is_active);
+      }
     }
 
     if (req.file) {
@@ -192,7 +207,7 @@ const updateMenuItem = async (req, res) => {
       updates.cloudinary_public_id = newPublicId;
     }
 
-    const item = await MenuItem.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
+    const item = await MenuItem.findByIdAndUpdate(id, { $set: updates }, { new: true, runValidators: true });
 
     return res.status(200).json({
       success: true,

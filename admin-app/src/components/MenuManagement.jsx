@@ -135,15 +135,29 @@ export default function MenuManagement() {
   };
 
   const handleToggleActive = async (item) => {
+    const previousStatus = item.is_active;
+    const updatedStatus = !previousStatus;
+
+    // Optimistic UI update
+    setItems((prev) =>
+      prev.map((i) => (i._id === item._id ? { ...i, is_active: updatedStatus } : i))
+    );
+
     try {
-      const updatedStatus = !item.is_active;
-      await api.put(`/menu/items/${item._id}`, { is_active: updatedStatus });
-      setItems((prev) =>
-        prev.map((i) => (i._id === item._id ? { ...i, is_active: updatedStatus } : i))
-      );
+      const res = await api.put(`/menu/items/${item._id}`, { is_active: updatedStatus });
+      if (res.data.success && res.data.item) {
+        setItems((prev) =>
+          prev.map((i) => (i._id === item._id ? res.data.item : i))
+        );
+      }
       showToast(`Item '${item.name}' set to ${updatedStatus ? 'Active' : 'Inactive'}.`);
     } catch (err) {
-      showToast('Error updating item status.', 'error');
+      // Rollback on failure
+      setItems((prev) =>
+        prev.map((i) => (i._id === item._id ? { ...i, is_active: previousStatus } : i))
+      );
+      const errMsg = err.response?.data?.message || 'Error updating item status.';
+      showToast(errMsg, 'error');
     }
   };
 
