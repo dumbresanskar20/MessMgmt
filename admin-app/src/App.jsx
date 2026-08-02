@@ -31,7 +31,7 @@ export default function App() {
 
   // Once authenticated, render the Admin Panel dashboard
   return (
-    <div className="min-h-screen flex bg-admin-bg text-admin-dark relative">
+    <div className="min-h-screen flex flex-col md:flex-row bg-admin-bg text-admin-dark relative">
       {/* Sidebar Navigation */}
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
