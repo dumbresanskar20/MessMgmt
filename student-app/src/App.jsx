@@ -135,7 +135,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-brand-warmBg w-full max-w-full overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-brand-warmBg w-full max-w-full overflow-x-hidden pt-16 sm:pt-20">
 
       {/* Top Header with Persistent Top-Right Auth Control & Dynamic Navbar */}
       <Header onOpenOrders={() => setOrdersModalOpen(true)} />
