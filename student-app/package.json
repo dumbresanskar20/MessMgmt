@@ -10,8 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@react-three/drei": "^9.106.0",
-    "@react-three/fiber": "^8.16.8",
     "axios": "^1.7.2",
     "canvas-confetti": "^1.9.3",
     "framer-motion": "^11.2.12",
@@ -19,8 +17,7 @@
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "socket.io-client": "^4.8.3",
-    "three": "^0.165.0"
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",

@@ -1,105 +1,139 @@
-import React, { useState, useEffect } from 'react';
-import ScrollFoodScene from './ScrollFoodScene';
-import { Sparkles, Utensils, Flame, ChevronRight } from 'lucide-react';
+import React from 'react';
+import { Sparkles, Utensils } from 'lucide-react';
+import { useCart } from '../context/CartContext';
 
 export default function Hero3D() {
-  const [scrollProgress, setScrollProgress] = useState(0);
+  const { selectedMealType, setSelectedMealType, activeMealWindows } = useCart();
 
-  useEffect(() => {
-    const handleScroll = () => {
-      const scrollY = window.scrollY;
-      const maxScroll = Math.max(1, window.innerHeight * 1.2);
-      const progress = Math.min(1, Math.max(0, scrollY / maxScroll));
-      setScrollProgress(progress);
-    };
+  const MEAL_CONFIG = {
+    breakfast: { label: 'Breakfast', icon: '🌅' },
+    lunch: { label: 'Lunch', icon: '☀️' },
+    snacks: { label: 'Snacks', icon: '☕' },
+    dinner: { label: 'Dinner', icon: '🌙' },
+  };
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll();
+  // Build list of active meal type buttons dynamically
+  const availableMealTypes = (activeMealWindows && activeMealWindows.length > 0)
+    ? activeMealWindows.map((w) => {
+        const type = w.meal_type.toLowerCase();
+        return {
+          id: type,
+          label: MEAL_CONFIG[type]?.label || type.charAt(0).toUpperCase() + type.slice(1),
+          icon: MEAL_CONFIG[type]?.icon || '🍱',
+          isCurrentlyOpen: w.is_currently_open,
+          startTime: w.formatted_start_time,
+          endTime: w.formatted_end_time,
+        };
+      })
+    : [
+        { id: 'breakfast', label: 'Breakfast', icon: '🌅', isCurrentlyOpen: true },
+        { id: 'lunch', label: 'Lunch', icon: '☀️', isCurrentlyOpen: true },
+        { id: 'snacks', label: 'Snacks', icon: '☕', isCurrentlyOpen: true },
+        { id: 'dinner', label: 'Dinner', icon: '🌙', isCurrentlyOpen: true },
+      ];
 
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // Calculate dynamic warm gradient style shifting based on scroll progress
-  const gradientHueShift = Math.round(scrollProgress * 20); // 0 to 20 degree shift
+  const handleMealSelect = (typeId) => {
+    setSelectedMealType(typeId);
+    const menuEl = document.getElementById('menu-section');
+    if (menuEl) {
+      menuEl.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   return (
-    <div
-      className="relative overflow-hidden transition-colors duration-500 py-12 md:py-16"
-      style={{
-        background: `linear-gradient(135deg, rgba(254,243,199, ${0.7 - scrollProgress * 0.2}) 0%, rgba(255,237,213, ${0.6 - scrollProgress * 0.2}) 50%, rgba(254,242,242, 0.8) 100%)`,
-      }}
-    >
-      {/* Scroll-Reactive Background Glowing Orbs */}
-      <div
-        className="absolute -top-20 -left-20 w-96 h-96 rounded-full bg-gradient-to-tr from-amber-300/40 to-orange-400/30 blur-3xl pointer-events-none transition-transform duration-300"
-        style={{
-          transform: `translate(${scrollProgress * 40}px, ${scrollProgress * 30}px) scale(${1 + scrollProgress * 0.15})`,
-        }}
-      />
-      <div
-        className="absolute top-1/3 -right-20 w-96 h-96 rounded-full bg-gradient-to-bl from-orange-400/30 to-amber-200/40 blur-3xl pointer-events-none transition-transform duration-300"
-        style={{
-          transform: `translate(${-scrollProgress * 50}px, ${scrollProgress * 40}px) scale(${1 - scrollProgress * 0.1})`,
-        }}
-      />
+    <div className="relative overflow-hidden bg-gradient-to-b from-amber-100/70 via-orange-50/50 to-brand-warmBg py-8 sm:py-12 md:py-16 w-full">
+      {/* Background Subtle Ambient Orbs */}
+      <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-full max-w-[600px] h-[300px] rounded-full bg-gradient-to-tr from-amber-300/30 to-orange-400/20 blur-3xl pointer-events-none" />
 
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+      <div className="max-w-screen-xl mx-auto px-3 sm:px-6 lg:px-8 relative z-10 text-center w-full">
+        <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
           
-          {/* Left Hero Text Content */}
-          <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 bg-amber-100/90 border border-amber-300 text-brand-terracotta text-xs md:text-sm font-semibold px-4 py-1.5 rounded-full shadow-sm">
-              <Sparkles className="w-4 h-4 text-brand-orange animate-spin" style={{ animationDuration: '6s' }} />
-              <span>Piping Hot & Fresh Daily • Campus Canteen</span>
-            </div>
+          {/* Top Badge */}
+          <div className="inline-flex items-center gap-1.5 sm:gap-2 bg-amber-100/90 border border-amber-300 text-brand-terracotta text-[11px] sm:text-xs md:text-sm font-semibold px-3 sm:px-4 py-1 sm:py-1.5 rounded-full shadow-sm max-w-full">
+            <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-orange animate-spin shrink-0" style={{ animationDuration: '6s' }} />
+            <span className="truncate">Piping Hot & Fresh Daily • Campus Canteen</span>
+          </div>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold font-display tracking-tight text-brand-dark leading-[1.15]">
-              Delicious Meals, <br className="hidden sm:block" />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-orange via-amber-600 to-brand-terracotta">
-                Zero Waiting Time.
-              </span>
-            </h1>
+          {/* Heading */}
+          <h1 className="text-2xl sm:text-4xl lg:text-6xl font-extrabold font-display tracking-tight text-brand-dark leading-[1.15]">
+            Delicious Meals, <br className="hidden sm:block" />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-orange via-amber-600 to-brand-terracotta">
+              Zero Waiting Time.
+            </span>
+          </h1>
 
-            <p className="text-base sm:text-lg text-stone-600 max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium">
-              Browse breakfast & lunch, pick your tray, and get instant digital meal tokens right on your phone. Fresh, hygienic, and prepared with love.
+          {/* Subtext */}
+          <p className="text-xs sm:text-base lg:text-lg text-stone-600 max-w-xl mx-auto leading-relaxed font-medium px-2">
+            Browse breakfast & lunch, pick your tray, and get instant digital meal tokens right on your phone. Fresh, hygienic, and prepared with love.
+          </p>
+
+          {/* Dynamic Meal Type Selection Buttons */}
+          <div className="pt-2 w-full">
+            <p className="text-[10px] sm:text-xs font-extrabold uppercase tracking-wider text-stone-500 mb-2.5 flex items-center justify-center gap-1.5">
+              <Utensils className="w-3.5 h-3.5 text-brand-orange shrink-0" />
+              <span>Select Meal Category To View Menu</span>
             </p>
 
-            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 pt-2">
-              <a
-                href="#menu-section"
-                className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-brand-orange to-amber-600 text-white font-bold text-base px-7 py-3.5 rounded-2xl shadow-warm hover:shadow-cardHover hover:scale-[1.02] transition-all duration-200"
-              >
-                <Utensils className="w-5 h-5" />
-                Explore Today's Menu
-              </a>
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 max-w-2xl mx-auto px-1">
+              {availableMealTypes.map((meal) => {
+                const isSelected = selectedMealType === meal.id;
+                const isOpen = meal.isCurrentlyOpen;
 
-              <div className="flex items-center gap-3 text-xs sm:text-sm font-medium text-stone-600 bg-white/80 backdrop-blur-sm px-4 py-3 rounded-2xl border border-amber-100 shadow-sm">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-                <span>Kitchen Live • Accepting Orders</span>
-              </div>
-            </div>
+                return (
+                  <button
+                    key={meal.id}
+                    onClick={() => handleMealSelect(meal.id)}
+                    className={`min-h-[44px] sm:min-h-[48px] px-3 sm:px-5 py-2 sm:py-2.5 rounded-2xl font-extrabold text-xs sm:text-sm transition-all duration-200 flex items-center gap-2 shadow-sm border cursor-pointer active:scale-95 ${
+                      isSelected
+                        ? 'bg-brand-dark text-white border-brand-dark shadow-md ring-2 ring-brand-orange/40 scale-[1.03]'
+                        : isOpen
+                        ? 'bg-white text-stone-700 border-amber-200/90 hover:border-amber-400 hover:bg-amber-50/50'
+                        : 'bg-stone-100/90 text-stone-500 border-stone-200 hover:bg-stone-200/60'
+                    }`}
+                  >
+                    {/* Status Light Indicator */}
+                    <span className="relative flex h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0">
+                      {isOpen ? (
+                        <>
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 sm:h-3 sm:w-3 bg-emerald-500" />
+                        </>
+                      ) : (
+                        <>
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 sm:h-3 sm:w-3 bg-rose-500" />
+                        </>
+                      )}
+                    </span>
 
-            {/* Micro Feature Badges */}
-            <div className="grid grid-cols-3 gap-3 pt-4 max-w-md mx-auto lg:mx-0 text-center">
-              <div className="bg-white/60 backdrop-blur-sm p-3 rounded-xl border border-amber-100/80">
-                <span className="block font-bold font-display text-lg text-brand-orange">B-001</span>
-                <span className="text-[11px] text-stone-500 font-semibold uppercase tracking-wider">Live Tokens</span>
-              </div>
-              <div className="bg-white/60 backdrop-blur-sm p-3 rounded-xl border border-amber-100/80">
-                <span className="block font-bold font-display text-lg text-emerald-700">⚡ 3 Mins</span>
-                <span className="text-[11px] text-stone-500 font-semibold uppercase tracking-wider">Average Prep</span>
-              </div>
-              <div className="bg-white/60 backdrop-blur-sm p-3 rounded-xl border border-amber-100/80">
-                <span className="block font-bold font-display text-lg text-amber-600">100% Veg</span>
-                <span className="text-[11px] text-stone-500 font-semibold uppercase tracking-wider">Hygienic</span>
-              </div>
+                    <span className="text-sm sm:text-base">{meal.icon}</span>
+                    <span>{meal.label}</span>
+
+                    {!isOpen && (
+                      <span className="text-[9px] sm:text-[10px] font-black uppercase text-rose-500 bg-rose-50 px-1 py-0.5 rounded border border-rose-200">
+                        Closed
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Right 3D Scroll-Driven Photorealistic Scene Container */}
-          <div className="lg:col-span-5 relative h-[340px] sm:h-[400px] lg:h-[460px] w-full flex items-center justify-center">
-            {/* Scroll-Linked 3D Canvas Scene */}
-            <ScrollFoodScene scrollProgress={scrollProgress} />
+          {/* Micro Feature Badges */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-3 pt-3 max-w-md sm:max-w-lg mx-auto text-center px-1">
+            <div className="bg-white/70 backdrop-blur-sm p-2 sm:p-3.5 rounded-2xl border border-amber-100/90 shadow-xs">
+              <span className="block font-extrabold font-display text-sm sm:text-lg text-brand-orange">B-001</span>
+              <span className="text-[9px] sm:text-[11px] text-stone-500 font-semibold uppercase tracking-wider block truncate">Live Tokens</span>
+            </div>
+            <div className="bg-white/70 backdrop-blur-sm p-2 sm:p-3.5 rounded-2xl border border-amber-100/90 shadow-xs">
+              <span className="block font-extrabold font-display text-sm sm:text-lg text-emerald-700">⚡ 3 Mins</span>
+              <span className="text-[9px] sm:text-[11px] text-stone-500 font-semibold uppercase tracking-wider block truncate">Avg Prep</span>
+            </div>
+            <div className="bg-white/70 backdrop-blur-sm p-2 sm:p-3.5 rounded-2xl border border-amber-100/90 shadow-xs">
+              <span className="block font-extrabold font-display text-sm sm:text-lg text-amber-600">100% Veg</span>
+              <span className="text-[9px] sm:text-[11px] text-stone-500 font-semibold uppercase tracking-wider block truncate">Hygienic</span>
+            </div>
           </div>
 
         </div>

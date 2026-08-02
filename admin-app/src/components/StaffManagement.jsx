@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Shield, CheckCircle2, XCircle, Mail, Copy, Check, Clock, AlertCircle, X } from 'lucide-react';
+import { UserPlus, Shield, CheckCircle2, XCircle, Mail, Copy, Check, Clock, AlertCircle, X, Trash2 } from 'lucide-react';
 import api from '../services/api';
 
 export default function StaffManagement() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [deleteTargetAccount, setDeleteTargetAccount] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Form fields
   const [username, setUsername] = useState('');
@@ -63,6 +65,22 @@ export default function StaffManagement() {
       }
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to update account status.');
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTargetAccount) return;
+    setDeleting(true);
+    try {
+      const res = await api.delete(`/auth/admin/staff/${deleteTargetAccount._id}`);
+      if (res.data.success) {
+        setAccounts((prev) => prev.filter((acc) => acc._id !== deleteTargetAccount._id));
+        setDeleteTargetAccount(null);
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete staff account from database.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -158,17 +176,27 @@ export default function StaffManagement() {
                       {acc.last_login_at ? new Date(acc.last_login_at).toLocaleString() : 'Never'}
                     </td>
 
-                    <td className="p-4 text-right">
+                    <td className="p-4 text-right flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleToggleStatus(acc)}
                         className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition-colors ${
                           acc.is_active
-                            ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                            ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
                             : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                         }`}
                       >
                         {acc.is_active ? 'Deactivate' : 'Activate'}
                       </button>
+
+                      {acc.role !== 'super_admin' && (
+                        <button
+                          onClick={() => setDeleteTargetAccount(acc)}
+                          className="p-1.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                          title="Delete staff account"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -273,6 +301,46 @@ export default function StaffManagement() {
               </form>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {/* Delete Account Confirmation Modal */}
+      {deleteTargetAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200 text-slate-900 animate-in zoom-in-95">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900">Delete Staff Account</h3>
+                <p className="text-xs text-slate-500 font-semibold">Confirm permanent database deletion</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+              Are you sure you want to permanently delete staff account <strong className="text-slate-900">{deleteTargetAccount.username}</strong> ({deleteTargetAccount.email}) from the database? This record will be removed permanently and cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTargetAccount(null)}
+                disabled={deleting}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteConfirm}
+                disabled={deleting}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+              >
+                {deleting ? 'Removing...' : 'Confirm Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

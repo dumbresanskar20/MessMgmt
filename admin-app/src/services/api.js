@@ -28,6 +28,12 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response && error.response.status === 402) {
+      console.warn('[Admin API] 402 Subscription Expired detected');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('subscription_expired', { detail: error.response.data }));
+      }
+    }
     if (error.response && error.response.status === 401) {
       const errorData = error.response.data || {};
       const isAuthError =

@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { z } = require('zod');
-const AdminUser = require('../models/AdminUser');
+const prisma = require('../config/prisma');
 const { sendAdminInvitation } = require('../services/otpService');
 
 const loginSchema = z.object({
@@ -23,7 +23,7 @@ const setPasswordSchema = z.object({
 
 const generateAdminToken = (admin) => {
   return jwt.sign(
-    { id: admin._id, role: admin.role, username: admin.username },
+    { id: admin.id, role: admin.role, username: admin.username },
     process.env.JWT_SECRET || 'super_secret_jwt_access_key_change_in_production',
     { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
   );
@@ -44,8 +44,10 @@ const loginAdmin = async (req, res) => {
     const { usernameOrEmail, password } = parseResult.data;
     const searchParam = usernameOrEmail.toLowerCase().trim();
 
-    const admin = await AdminUser.findOne({
-      $or: [{ email: searchParam }, { username: searchParam }],
+    const admin = await prisma.adminUser.findFirst({
+      where: {
+        OR: [{ email: searchParam }, { username: searchParam }],
+      },
     });
 
     if (!admin) {
@@ -66,21 +68,24 @@ const loginAdmin = async (req, res) => {
     }
 
     // Audit trail: update last_login_at
-    admin.last_login_at = new Date();
-    await admin.save();
+    const updatedAdmin = await prisma.adminUser.update({
+      where: { id: admin.id },
+      data: { last_login_at: new Date() },
+    });
 
-    const token = generateAdminToken(admin);
+    const token = generateAdminToken(updatedAdmin);
 
     return res.status(200).json({
       success: true,
       message: 'Admin login successful!',
       token,
       admin: {
-        id: admin._id,
-        username: admin.username,
-        email: admin.email,
-        role: admin.role,
-        last_login_at: admin.last_login_at,
+        id: updatedAdmin.id,
+        _id: updatedAdmin.id,
+        username: updatedAdmin.username,
+        email: updatedAdmin.email,
+        role: updatedAdmin.role,
+        last_login_at: updatedAdmin.last_login_at,
       },
     });
   } catch (error) {
@@ -103,43 +108,43 @@ const createStaffAccount = async (req, res) => {
 
     const { username, email, role } = parseResult.data;
     const cleanEmail = email.toLowerCase().trim();
+    const cleanUsername = username.trim();
 
-    const existingAdmin = await AdminUser.findOne({
-      $or: [{ email: cleanEmail }, { username: username.trim() }],
-    });
+    const existingByEmail = await prisma.adminUser.findUnique({ where: { email: cleanEmail } });
+    const existingByUsername = await prisma.adminUser.findUnique({ where: { username: cleanUsername } });
 
-    if (existingAdmin) {
+    if (existingByEmail || existingByUsername) {
       return res.status(400).json({ success: false, message: 'An admin user with this username or email already exists.' });
     }
 
-    // Generate token for invitation link
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const dummyPasswordHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
 
-    const newAdmin = new AdminUser({
-      username: username.trim(),
-      email: cleanEmail,
-      password_hash: dummyPasswordHash,
-      role,
-      is_active: true,
-      is_verified: false,
-      verification_token: verificationToken,
-      created_by: req.admin._id, // Audit trail
+    const newAdmin = await prisma.adminUser.create({
+      data: {
+        username: cleanUsername,
+        email: cleanEmail,
+        password_hash: dummyPasswordHash,
+        role,
+        is_active: true,
+        is_verified: false,
+        verification_token: verificationToken,
+        created_by_id: req.admin.id,
+      },
     });
-
-    await newAdmin.save();
 
     const adminAppUrl = (process.env.FRONTEND_ADMIN_URL || 'http://localhost:5174').replace(/\/+$/, '');
     const inviteLink = `${adminAppUrl}/set-password?token=${verificationToken}`;
 
-    await sendAdminInvitation(cleanEmail, username, inviteLink);
+    await sendAdminInvitation(cleanEmail, cleanUsername, inviteLink);
 
     return res.status(201).json({
       success: true,
-      message: `Staff account for ${username} created! Invitation link dispatched.`,
-      inviteLink, // Returned for dev convenience
+      message: `Staff account for ${cleanUsername} created! Invitation link dispatched.`,
+      inviteLink,
       account: {
-        id: newAdmin._id,
+        id: newAdmin.id,
+        _id: newAdmin.id,
         username: newAdmin.username,
         email: newAdmin.email,
         role: newAdmin.role,
@@ -166,7 +171,7 @@ const setStaffPassword = async (req, res) => {
 
     const { token, password } = parseResult.data;
 
-    const admin = await AdminUser.findOne({ verification_token: token });
+    const admin = await prisma.adminUser.findFirst({ where: { verification_token: token } });
     if (!admin) {
       return res.status(400).json({
         success: false,
@@ -182,15 +187,22 @@ const setStaffPassword = async (req, res) => {
     }
 
     const salt = await bcrypt.genSalt(10);
-    admin.password_hash = await bcrypt.hash(password, salt);
-    admin.is_verified = true;
-    admin.verification_token = null;
-    admin.last_login_at = new Date();
-    await admin.save();
+    const hashedPassword = await bcrypt.hash(password, salt);
+    const now = new Date();
+
+    const updatedAdmin = await prisma.adminUser.update({
+      where: { id: admin.id },
+      data: {
+        password_hash: hashedPassword,
+        is_verified: true,
+        verification_token: null,
+        last_login_at: now,
+      },
+    });
 
     let jwtToken;
     try {
-      jwtToken = generateAdminToken(admin);
+      jwtToken = generateAdminToken(updatedAdmin);
     } catch (tokenErr) {
       console.error('Token generation error after password reset:', tokenErr);
       return res.status(200).json({
@@ -205,11 +217,12 @@ const setStaffPassword = async (req, res) => {
       message: 'Password set successfully! Redirecting to Admin Panel...',
       token: jwtToken,
       admin: {
-        id: admin._id,
-        username: admin.username,
-        email: admin.email,
-        role: admin.role,
-        last_login_at: admin.last_login_at,
+        id: updatedAdmin.id,
+        _id: updatedAdmin.id,
+        username: updatedAdmin.username,
+        email: updatedAdmin.email,
+        role: updatedAdmin.role,
+        last_login_at: updatedAdmin.last_login_at,
       },
     });
   } catch (error) {
@@ -221,14 +234,36 @@ const setStaffPassword = async (req, res) => {
 // List all admin staff accounts (Super Admin only)
 const listAdminAccounts = async (req, res) => {
   try {
-    const accounts = await AdminUser.find()
-      .populate('created_by', 'username email')
-      .select('-password_hash -verification_token')
-      .sort({ created_at: -1 });
+    const accounts = await prisma.adminUser.findMany({
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+        is_active: true,
+        is_verified: true,
+        last_login_at: true,
+        created_at: true,
+        creator: {
+          select: { id: true, username: true, email: true },
+        },
+      },
+    });
+
+    // Reshape to match Mongoose .populate() response shape (created_by nested object)
+    const shaped = accounts.map((a) => ({
+      ...a,
+      _id: a.id,
+      created_by: a.creator
+        ? { _id: a.creator.id, id: a.creator.id, username: a.creator.username, email: a.creator.email }
+        : null,
+      creator: undefined,
+    }));
 
     return res.status(200).json({
       success: true,
-      accounts,
+      accounts: shaped,
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to retrieve admin accounts.' });
@@ -239,26 +274,72 @@ const listAdminAccounts = async (req, res) => {
 const toggleStaffStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const admin = await AdminUser.findById(id);
+    const targetId = parseInt(id, 10);
+
+    const admin = await prisma.adminUser.findUnique({ where: { id: targetId } });
 
     if (!admin) {
       return res.status(404).json({ success: false, message: 'Account not found.' });
     }
 
-    if (admin._id.toString() === req.admin._id.toString()) {
+    if (admin.id === req.admin.id) {
       return res.status(400).json({ success: false, message: 'You cannot deactivate your own account.' });
     }
 
-    admin.is_active = !admin.is_active;
-    await admin.save();
+    const updated = await prisma.adminUser.update({
+      where: { id: targetId },
+      data: { is_active: !admin.is_active },
+    });
 
     return res.status(200).json({
       success: true,
-      message: `Account ${admin.username} is now ${admin.is_active ? 'Active' : 'Deactivated'}.`,
-      is_active: admin.is_active,
+      message: `Account ${updated.username} is now ${updated.is_active ? 'Active' : 'Deactivated'}.`,
+      is_active: updated.is_active,
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to toggle account status.' });
+  }
+};
+
+// Delete staff account (Super Admin only - Hard Delete from Database)
+const deleteStaffAccount = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const targetId = parseInt(id, 10);
+
+    const targetAccount = await prisma.adminUser.findUnique({ where: { id: targetId } });
+
+    if (!targetAccount) {
+      return res.status(404).json({ success: false, message: 'Staff account not found.' });
+    }
+
+    if (targetAccount.id === req.admin.id) {
+      return res.status(400).json({ success: false, message: 'You cannot delete your own super admin account.' });
+    }
+
+    if (targetAccount.role === 'super_admin') {
+      return res.status(400).json({ success: false, message: 'Super Admin accounts cannot be deleted.' });
+    }
+
+    // Unlink child accounts created by this admin before deletion to satisfy FK constraints
+    await prisma.adminUser.updateMany({
+      where: { created_by_id: targetId },
+      data: { created_by_id: null },
+    });
+
+    // Hard Delete: permanently remove record from database
+    await prisma.adminUser.delete({
+      where: { id: targetId },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Staff account ${targetAccount.username} permanently deleted from database.`,
+      account_id: targetId,
+    });
+  } catch (error) {
+    console.error('Delete staff account error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete staff account from database.' });
   }
 };
 
@@ -276,5 +357,6 @@ module.exports = {
   setStaffPassword,
   listAdminAccounts,
   toggleStaffStatus,
+  deleteStaffAccount,
   getAdminProfile,
 };

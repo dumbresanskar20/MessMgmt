@@ -1,5 +1,4 @@
-const MenuItem = require('../models/MenuItem');
-const MealWindow = require('../models/MealWindow');
+const prisma = require('../config/prisma');
 const cloudinary = require('../config/cloudinary');
 
 const getCurrentTimeHHMM = () => {
@@ -24,7 +23,7 @@ const computeMealStatus = (w, currentTime = getCurrentTimeHHMM()) => {
 
   if (isActive) {
     if (w.is_full_day === true) {
-      isCurrentlyOpen = true; // Full day meal types skip time comparison entirely
+      isCurrentlyOpen = true;
     } else {
       isCurrentlyOpen = Boolean(
         w.start_time && w.end_time && currentTime >= w.start_time && currentTime <= w.end_time
@@ -33,7 +32,8 @@ const computeMealStatus = (w, currentTime = getCurrentTimeHHMM()) => {
   }
 
   return {
-    _id: w._id,
+    _id: w.id || w._id,
+    id: w.id || w._id,
     meal_type: w.meal_type,
     start_time: w.start_time || '08:00',
     end_time: w.end_time || '20:00',
@@ -45,32 +45,31 @@ const computeMealStatus = (w, currentTime = getCurrentTimeHHMM()) => {
   };
 };
 
+// Helper: add _id alias to a Prisma record
+const withId = (record) => ({ ...record, _id: record.id });
+
 // Get all menu items (Students & Admin)
 const getMenuItems = async (req, res) => {
   try {
     const { meal_type, active_only } = req.query;
     const isStudentFetch = active_only === 'true';
 
-    const windows = await MealWindow.find();
+    const windows = await prisma.mealWindow.findMany();
     const currentTime = getCurrentTimeHHMM();
-    
-    // Map window status for all meal types
+
     const windowMap = {};
-    windows.forEach(w => {
+    windows.forEach((w) => {
       windowMap[w.meal_type.toLowerCase()] = computeMealStatus(w, currentTime);
     });
 
     const activeTypes = ['breakfast', 'lunch', 'snacks', 'dinner'].filter(
-      t => windowMap[t] ? windowMap[t].is_active : true
+      (t) => (windowMap[t] ? windowMap[t].is_active : true)
     );
-
-    const filter = {};
 
     if (meal_type) {
       const targetType = meal_type.toLowerCase();
       const status = windowMap[targetType] || { is_active: true, is_currently_open: true };
 
-      // Student App: Hide items if meal type is deactivated by canteen management
       if (isStudentFetch && !status.is_active) {
         return res.status(200).json({
           success: true,
@@ -82,34 +81,38 @@ const getMenuItems = async (req, res) => {
         });
       }
 
-      filter.meal_type = targetType;
+      const where = { meal_type: targetType };
+      if (isStudentFetch) where.is_active = true;
 
-      if (isStudentFetch) {
-        filter.is_active = true;
-      }
-
-      const items = await MenuItem.find(filter).sort({ created_at: -1 });
+      const items = await prisma.menuItem.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+      });
 
       return res.status(200).json({
         success: true,
         count: items.length,
-        items,
+        items: items.map(withId),
         is_active: status.is_active,
         is_currently_open: status.is_currently_open,
         meal_window: status,
       });
     } else {
+      const where = {};
       if (isStudentFetch) {
-        filter.meal_type = { $in: activeTypes };
-        filter.is_active = true;
+        where.meal_type = { in: activeTypes };
+        where.is_active = true;
       }
 
-      const items = await MenuItem.find(filter).sort({ created_at: -1 });
+      const items = await prisma.menuItem.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+      });
 
       return res.status(200).json({
         success: true,
         count: items.length,
-        items,
+        items: items.map(withId),
       });
     }
   } catch (error) {
@@ -126,12 +129,14 @@ const createMenuItem = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Name, price, and meal_type are required fields.' });
     }
 
-    let finalImageUrl = image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80';
+    let finalImageUrl =
+      image_url ||
+      'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80';
     let cloudinaryPublicId = null;
 
     if (req.file) {
       finalImageUrl = req.file.path || req.file.secure_url;
-      cloudinaryPublicId = req.file.filename || req.file.public_id;
+      cloudinaryPublicId = req.file.filename || req.file.public_id || null;
     }
 
     let parsedIsActive = true;
@@ -143,22 +148,22 @@ const createMenuItem = async (req, res) => {
       }
     }
 
-    const item = new MenuItem({
-      name: name.trim(),
-      image_url: finalImageUrl,
-      cloudinary_public_id: cloudinaryPublicId,
-      meal_type: meal_type.toLowerCase(),
-      price: Number(price),
-      description: description || '',
-      is_active: parsedIsActive,
+    const item = await prisma.menuItem.create({
+      data: {
+        name: name.trim(),
+        image_url: finalImageUrl,
+        cloudinary_public_id: cloudinaryPublicId,
+        meal_type: meal_type.toLowerCase(),
+        price: Number(price),
+        description: description || '',
+        is_active: parsedIsActive,
+      },
     });
-
-    await item.save();
 
     return res.status(201).json({
       success: true,
       message: 'Menu item created successfully!',
-      item,
+      item: withId(item),
     });
   } catch (error) {
     console.error('Error creating menu item:', error);
@@ -170,19 +175,16 @@ const createMenuItem = async (req, res) => {
 const updateMenuItem = async (req, res) => {
   try {
     const { id } = req.params;
+    const targetId = parseInt(id, 10);
     const updates = { ...req.body };
 
-    const existingItem = await MenuItem.findById(id);
+    const existingItem = await prisma.menuItem.findUnique({ where: { id: targetId } });
     if (!existingItem) {
       return res.status(404).json({ success: false, message: 'Menu item not found.' });
     }
 
-    if (updates.meal_type) {
-      updates.meal_type = updates.meal_type.toLowerCase();
-    }
-    if (updates.price !== undefined) {
-      updates.price = Number(updates.price);
-    }
+    if (updates.meal_type) updates.meal_type = updates.meal_type.toLowerCase();
+    if (updates.price !== undefined) updates.price = Number(updates.price);
     if (updates.is_active !== undefined) {
       if (typeof updates.is_active === 'string') {
         updates.is_active = updates.is_active.toLowerCase() === 'true' || updates.is_active === '1';
@@ -193,7 +195,7 @@ const updateMenuItem = async (req, res) => {
 
     if (req.file) {
       const newImageUrl = req.file.path || req.file.secure_url;
-      const newPublicId = req.file.filename || req.file.public_id;
+      const newPublicId = req.file.filename || req.file.public_id || null;
 
       if (existingItem.cloudinary_public_id) {
         try {
@@ -207,12 +209,19 @@ const updateMenuItem = async (req, res) => {
       updates.cloudinary_public_id = newPublicId;
     }
 
-    const item = await MenuItem.findByIdAndUpdate(id, { $set: updates }, { new: true, runValidators: true });
+    // Remove fields that shouldn't be passed directly to Prisma update
+    delete updates.id;
+    delete updates._id;
+
+    const item = await prisma.menuItem.update({
+      where: { id: targetId },
+      data: updates,
+    });
 
     return res.status(200).json({
       success: true,
       message: 'Menu item updated successfully.',
-      item,
+      item: withId(item),
     });
   } catch (error) {
     console.error('Error updating menu item:', error);
@@ -224,8 +233,9 @@ const updateMenuItem = async (req, res) => {
 const deleteMenuItem = async (req, res) => {
   try {
     const { id } = req.params;
-    const item = await MenuItem.findById(id);
+    const targetId = parseInt(id, 10);
 
+    const item = await prisma.menuItem.findUnique({ where: { id: targetId } });
     if (!item) {
       return res.status(404).json({ success: false, message: 'Menu item not found.' });
     }
@@ -238,7 +248,7 @@ const deleteMenuItem = async (req, res) => {
       }
     }
 
-    await MenuItem.findByIdAndDelete(id);
+    await prisma.menuItem.delete({ where: { id: targetId } });
 
     return res.status(200).json({
       success: true,
@@ -253,7 +263,7 @@ const deleteMenuItem = async (req, res) => {
 // Get Meal Timings / Windows
 const getMealWindows = async (req, res) => {
   try {
-    let windows = await MealWindow.find().sort({ meal_type: 1 });
+    let windows = await prisma.mealWindow.findMany({ orderBy: { meal_type: 'asc' } });
 
     if (windows.length === 0) {
       const defaultWindows = [
@@ -262,7 +272,8 @@ const getMealWindows = async (req, res) => {
         { meal_type: 'snacks', start_time: '16:30', end_time: '18:00', is_active: true, is_full_day: false },
         { meal_type: 'dinner', start_time: '19:30', end_time: '21:30', is_active: true, is_full_day: false },
       ];
-      windows = await MealWindow.insertMany(defaultWindows);
+      await prisma.mealWindow.createMany({ data: defaultWindows });
+      windows = await prisma.mealWindow.findMany({ orderBy: { meal_type: 'asc' } });
     }
 
     const currentTime = getCurrentTimeHHMM();
@@ -284,17 +295,25 @@ const updateMealWindow = async (req, res) => {
     const { meal_type } = req.params;
     const { start_time, end_time, is_active, is_full_day } = req.body;
 
-    const updates = {};
-    if (start_time !== undefined) updates.start_time = start_time;
-    if (end_time !== undefined) updates.end_time = end_time;
-    if (is_active !== undefined) updates.is_active = is_active === true || is_active === 'true';
-    if (is_full_day !== undefined) updates.is_full_day = is_full_day === true || is_full_day === 'true';
+    const updateData = {};
+    if (start_time !== undefined) updateData.start_time = start_time;
+    if (end_time !== undefined) updateData.end_time = end_time;
+    if (is_active !== undefined) updateData.is_active = is_active === true || is_active === 'true';
+    if (is_full_day !== undefined) updateData.is_full_day = is_full_day === true || is_full_day === 'true';
 
-    const window = await MealWindow.findOneAndUpdate(
-      { meal_type: meal_type.toLowerCase() },
-      updates,
-      { new: true, upsert: true }
-    );
+    const cleanMealType = meal_type.toLowerCase();
+
+    const window = await prisma.mealWindow.upsert({
+      where: { meal_type: cleanMealType },
+      update: updateData,
+      create: {
+        meal_type: cleanMealType,
+        start_time: start_time || '08:00',
+        end_time: end_time || '20:00',
+        is_active: updateData.is_active !== undefined ? updateData.is_active : true,
+        is_full_day: updateData.is_full_day !== undefined ? updateData.is_full_day : false,
+      },
+    });
 
     const formatted = computeMealStatus(window);
 

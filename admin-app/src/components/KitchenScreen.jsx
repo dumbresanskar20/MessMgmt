@@ -3,14 +3,17 @@ import { Wifi, WifiOff, RefreshCw, CheckCircle2, Clock, ChefHat, Check, Shopping
 import api from '../services/api';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { createAdminSocketClient } from '../services/socket';
+import SubscriptionWidget from './SubscriptionWidget';
+import SubscriptionModal from './SubscriptionModal';
 
 export default function KitchenScreen() {
-  const { token, isSuperAdmin } = useAdminAuth();
+  const { token, isSuperAdmin, subscription, fetchSubscriptionStatus, setSubscription, setSubscriptionExpired } = useAdminAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
   const [selectedMeal, setSelectedMeal] = useState('all'); // 'all' | 'breakfast' | 'lunch' | 'snacks' | 'dinner'
   const [todayIncome, setTodayIncome] = useState(null);
+  const [renewModalOpen, setRenewModalOpen] = useState(false);
   
   // Summary counts state
   const [orderCounts, setOrderCounts] = useState({
@@ -210,6 +213,15 @@ export default function KitchenScreen() {
           </div>
         </div>
       </div>
+
+      {/* SUPER ADMIN ONLY: SYSTEM SUBSCRIPTION STATUS WIDGET */}
+      {isSuperAdmin && (
+        <SubscriptionWidget
+          subscription={subscription}
+          onOpenRenewModal={() => setRenewModalOpen(true)}
+          onRefresh={fetchSubscriptionStatus}
+        />
+      )}
 
       {/* SUPER ADMIN ONLY: TODAY'S INCOME SUMMARY WIDGET */}
       {isSuperAdmin && todayIncome && (
@@ -472,6 +484,17 @@ export default function KitchenScreen() {
         )}
 
       </div>
+
+      {/* SUPER ADMIN RENEWAL MODAL */}
+      <SubscriptionModal
+        isOpen={renewModalOpen}
+        onClose={() => setRenewModalOpen(false)}
+        onSuccess={(updatedSub) => {
+          setSubscription(updatedSub);
+          setSubscriptionExpired(false);
+          fetchSubscriptionStatus();
+        }}
+      />
     </div>
   );
 }

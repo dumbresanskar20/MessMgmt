@@ -22,6 +22,25 @@ export const AdminAuthProvider = ({ children }) => {
   });
 
   const [loading, setLoading] = useState(false);
+  const [subscription, setSubscription] = useState(null);
+  const [subscriptionExpired, setSubscriptionExpired] = useState(false);
+
+  const fetchSubscriptionStatus = async () => {
+    try {
+      const res = await api.get('/subscription/status');
+      if (res.data.success) {
+        setSubscription(res.data.subscription);
+        const isExp = res.data.subscription?.is_expired || res.data.subscription?.status !== 'active';
+        setSubscriptionExpired(isExp);
+        return res.data.subscription;
+      }
+    } catch (err) {
+      if (err.response?.status === 402) {
+        setSubscriptionExpired(true);
+      }
+    }
+    return null;
+  };
 
   useEffect(() => {
     if (token) {
@@ -39,16 +58,28 @@ export const AdminAuthProvider = ({ children }) => {
     }
   }, [admin]);
 
-  // Reset auth state if a 401 Unauthorized API error occurs
+  useEffect(() => {
+    fetchSubscriptionStatus();
+  }, []);
+
+  // Reset auth state if a 401 Unauthorized API error occurs or set expired on 402
   useEffect(() => {
     const handleUnauthorized = () => {
       setAdmin(null);
       setToken(null);
     };
 
+    const handleSubExpired = () => {
+      setSubscriptionExpired(true);
+    };
+
     if (typeof window !== 'undefined') {
       window.addEventListener('admin_auth_unauthorized', handleUnauthorized);
-      return () => window.removeEventListener('admin_auth_unauthorized', handleUnauthorized);
+      window.addEventListener('subscription_expired', handleSubExpired);
+      return () => {
+        window.removeEventListener('admin_auth_unauthorized', handleUnauthorized);
+        window.removeEventListener('subscription_expired', handleSubExpired);
+      };
     }
   }, []);
 
@@ -122,6 +153,11 @@ export const AdminAuthProvider = ({ children }) => {
         isAuthenticated: !!token && !!admin,
         isSuperAdmin: admin?.role === 'super_admin',
         loading,
+        subscription,
+        subscriptionExpired,
+        setSubscription,
+        setSubscriptionExpired,
+        fetchSubscriptionStatus,
         login,
         setPasswordWithToken,
         logout,

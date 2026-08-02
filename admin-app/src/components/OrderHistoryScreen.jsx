@@ -256,7 +256,6 @@ export default function OrderHistoryScreen() {
             >
               <option value="">All Payment Statuses</option>
               <option value="paid">Paid</option>
-              <option value="awaiting_counter_payment">Awaiting Counter</option>
               <option value="pending">Pending</option>
               <option value="failed">Failed</option>
             </select>
@@ -380,8 +379,6 @@ export default function OrderHistoryScreen() {
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                             ord.payment_status === 'paid'
                               ? 'bg-emerald-100 text-emerald-800'
-                              : ord.payment_status === 'awaiting_counter_payment'
-                              ? 'bg-amber-100 text-amber-800'
                               : 'bg-red-100 text-red-800'
                           }`}>
                             {ord.payment_status}

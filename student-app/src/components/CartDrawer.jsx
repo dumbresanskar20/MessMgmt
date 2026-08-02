@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, ShieldCheck, AlertCircle, Store } from 'lucide-react';
+import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -9,48 +9,9 @@ export default function CartDrawer({ onOrderSuccess }) {
   const { cartItems, cartTotal, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity, selectedMealType, clearCart } = useCart();
   const { student, isAuthenticated, openAuthModal } = useAuth();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [counterLoading, setCounterLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   if (!isCartOpen) return null;
-
-  // Pay at Counter request (Creates order with payment_status: 'awaiting_counter_payment', no token yet)
-  const handlePayAtCounter = async () => {
-    setErrorMessage('');
-
-    // Check auth boundary: If user is not logged in, prompt Auth Modal and preserve cart
-    if (!isAuthenticated) {
-      openAuthModal(true);
-      return;
-    }
-
-    if (cartItems.length === 0) return;
-
-    setCounterLoading(true);
-
-    try {
-      console.log('[Counter Order] Requesting order to pay at canteen counter...');
-      const res = await api.post('/orders/request-counter-order', {
-        items: cartItems,
-        meal_type: selectedMealType,
-      });
-
-      if (res.data.success) {
-        clearCart();
-        setIsCartOpen(false);
-        if (onOrderSuccess) {
-          onOrderSuccess(null, res.data.order);
-        }
-      } else {
-        setErrorMessage(res.data.message || 'Failed to request counter payment order.');
-      }
-    } catch (err) {
-      console.error('Counter order request error:', err);
-      setErrorMessage(err.response?.data?.message || err.message || 'Failed to submit counter payment request.');
-    } finally {
-      setCounterLoading(false);
-    }
-  };
 
   const handleProceedToPay = async () => {
     setErrorMessage('');
@@ -219,7 +180,7 @@ export default function CartDrawer({ onOrderSuccess }) {
 
       <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
         <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between border-l border-amber-100 animate-in slide-in-from-right duration-300">
-          
+
           {/* Drawer Header */}
           <div className="p-5 border-b border-stone-100 flex items-center justify-between bg-stone-50/80">
             <div className="flex items-center gap-2.5">
@@ -324,12 +285,11 @@ export default function CartDrawer({ onOrderSuccess }) {
                 </div>
               </div>
 
-              {/* Dual Checkout Action Buttons */}
+              {/* Single Online Checkout Action */}
               <div className="space-y-2.5">
-                {/* 1. Pay with Razorpay */}
                 <button
                   onClick={handleProceedToPay}
-                  disabled={checkoutLoading || counterLoading}
+                  disabled={checkoutLoading}
                   className="w-full py-3.5 bg-gradient-to-r from-brand-orange to-amber-600 hover:from-amber-600 hover:to-brand-orange text-white font-extrabold rounded-2xl text-xs sm:text-sm shadow-warm hover:shadow-cardHover transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {checkoutLoading ? (
@@ -344,25 +304,6 @@ export default function CartDrawer({ onOrderSuccess }) {
                 </button>
                 <p className="text-[10px] text-center text-stone-400 font-medium -mt-1">
                   Pay online and get your token instantly
-                </p>
-
-                {/* 2. Pay at Counter */}
-                <button
-                  onClick={handlePayAtCounter}
-                  disabled={checkoutLoading || counterLoading}
-                  className="w-full py-3.5 bg-stone-900 hover:bg-stone-800 text-white font-extrabold rounded-2xl text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer border border-stone-700 disabled:opacity-50"
-                >
-                  {counterLoading ? (
-                    <span>Sending Request...</span>
-                  ) : (
-                    <>
-                      <Store className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span>Pay at Counter (₹{cartTotal})</span>
-                    </>
-                  )}
-                </button>
-                <p className="text-[10px] text-center text-stone-400 font-medium -mt-1">
-                  Pay cash/UPI at canteen counter to receive your token
                 </p>
               </div>
             </div>

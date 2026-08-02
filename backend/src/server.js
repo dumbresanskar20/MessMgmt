@@ -6,6 +6,8 @@ const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const initSocketIO = require('./socket');
 const { initOrderCleanupJob } = require('./jobs/cleanupOldOrders');
+const { initSubscriptionCronJob } = require('./jobs/subscriptionCron');
+const { checkSubscriptionStatus } = require('./middleware/subscriptionMiddleware');
 
 // Load environment variables
 dotenv.config();
@@ -46,7 +48,6 @@ app.use(
         process.env.NODE_ENV !== 'production';
 
       if (isAllowed) {
-        console.log(`[CORS Diagnostics] Allowed incoming origin: ${origin}`);
         callback(null, true);
       } else {
         console.warn(`[CORS Diagnostics] BLOCKED incoming origin: ${origin}`);
@@ -90,6 +91,13 @@ app.set('socketio', io);
 
 const { apiLimiter } = require('./middleware/rateLimiter');
 
+// Subscription Routes & Webhook (Mounted BEFORE blocking middleware so status & renewal are accessible)
+app.use(['/api/subscription', '/subscription'], require('./routes/subscriptionRoutes'));
+app.use('/api/webhook/razorpay-subscription', require('./controllers/subscriptionController').handleDevRazorpayWebhook);
+
+// Global Subscription Enforcement Middleware (Runs before all student, menu, order, kitchen routes)
+app.use(checkSubscriptionStatus);
+
 // API Routes (supports both /api/ prefix and fallback paths)
 app.use(['/api/auth/student', '/auth/student'], require('./routes/studentAuthRoutes'));
 app.use(['/api/auth/admin', '/auth/admin'], require('./routes/adminAuthRoutes'));
@@ -123,21 +131,23 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 connectDB().then(() => {
-  // Initialize daily automated order history cleanup background job
+  // Initialize daily automated background jobs
   initOrderCleanupJob();
+  initSubscriptionCronJob();
 
   server.listen(PORT, () => {
     const rzpKeyId = process.env.RAZORPAY_KEY_ID;
     const rzpSecretSet = Boolean(process.env.RAZORPAY_KEY_SECRET);
+    const devRzpKeyId = process.env.DEV_RAZORPAY_KEY_ID;
+    const devRzpSecretSet = Boolean(process.env.DEV_RAZORPAY_KEY_SECRET);
 
     console.log(`\n==================================================`);
     console.log(`🚀 Mess Management Server running on port ${PORT}`);
     console.log(`📡 Socket.IO server active`);
-    console.log(`💳 Razorpay Key ID: ${rzpKeyId ? `${rzpKeyId.substring(0, 10)}...` : 'MISSING/NOT SET'}`);
-    console.log(`🔑 Razorpay Key Secret Present: ${rzpSecretSet}`);
-    if (!rzpKeyId || rzpKeyId === 'rzp_test_YourKeyIdHere') {
-      console.warn(`⚠️ WARNING: RAZORPAY_KEY_ID is missing or set to fallback placeholder string! Real payment orders will fail.`);
-    }
+    console.log(`💳 Canteen Student Checkout Razorpay Key: ${rzpKeyId ? `${rzpKeyId.substring(0, 10)}...` : 'NOT SET'}`);
+    console.log(`🔑 Canteen Student Secret Present: ${rzpSecretSet}`);
+    console.log(`👑 Developer Subscription Billing Razorpay Key: ${devRzpKeyId ? `${devRzpKeyId.substring(0, 10)}...` : 'NOT SET'}`);
+    console.log(`🔑 Developer Subscription Secret Present: ${devRzpSecretSet}`);
     console.log(`==================================================\n`);
   });
 });

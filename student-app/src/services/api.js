@@ -34,6 +34,12 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response && error.response.status === 402) {
+      console.warn('[Student API] 402 Subscription Expired detected');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('subscription_expired', { detail: error.response.data }));
+      }
+    }
     if (error.response && error.response.status === 401) {
       console.warn('[API Interceptor] 401 Unauthorized detected - clearing stale session tokens.');
       localStorage.removeItem('student_token');

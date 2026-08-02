@@ -1,24 +1,25 @@
 const cron = require('node-cron');
-const Order = require('../models/Order');
+const prisma = require('../config/prisma');
 
 /**
- * Permanently delete orders older than the specified retention window (default: 60 days)
+ * Permanently delete orders older than the specified retention window (default: 60 days).
+ * OrderItem rows are automatically cascade-deleted via the onDelete: Cascade FK on OrderItem.order_id.
+ *
  * @returns {Promise<{ deletedCount: number, cutoffDate: Date, retentionDays: number }>}
  */
 const cleanupOldOrders = async () => {
   const retentionDays = parseInt(process.env.ORDER_RETENTION_DAYS, 10) || 60;
-
-  // Calculate UTC cutoff timestamp (NOW - retentionDays)
   const now = new Date();
   const cutoffDate = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
 
   try {
-    // Perform efficient database-level bulk delete directly on database index
-    const result = await Order.deleteMany({
-      created_at: { $lt: cutoffDate },
+    const result = await prisma.order.deleteMany({
+      where: {
+        created_at: { lt: cutoffDate },
+      },
     });
 
-    const deletedCount = result.deletedCount || 0;
+    const deletedCount = result.count || 0;
     const logTimestamp = now.toISOString();
 
     if (deletedCount > 0) {
@@ -31,19 +32,10 @@ const cleanupOldOrders = async () => {
       );
     }
 
-    return {
-      deletedCount,
-      cutoffDate,
-      retentionDays,
-      timestamp: logTimestamp,
-    };
+    return { deletedCount, cutoffDate, retentionDays, timestamp: logTimestamp };
   } catch (error) {
     console.error(`❌ [Order Cleanup Job Error] Failed to execute cleanup job: ${error.message}`);
-    // Safe retry / idempotency: return object with error, avoid throwing unhandled exception
-    return {
-      error: error.message,
-      deletedCount: 0,
-    };
+    return { error: error.message, deletedCount: 0 };
   }
 };
 
@@ -51,7 +43,6 @@ const cleanupOldOrders = async () => {
  * Initialize daily scheduled cron job (runs every day at 02:00 AM server time)
  */
 const initOrderCleanupJob = () => {
-  // Cron syntax: "0 2 * * *" => minute 0, hour 2 (2:00 AM off-peak)
   const schedulePattern = process.env.ORDER_CLEANUP_CRON || '0 2 * * *';
 
   cron.schedule(schedulePattern, async () => {

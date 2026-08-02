@@ -147,24 +147,25 @@ export default function AuthModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm animate-in fade-in">
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-amber-100 p-6 sm:p-8">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-stone-900/70 backdrop-blur-md animate-in fade-in overflow-hidden">
+      <div className="relative w-full max-w-md my-auto bg-white rounded-3xl shadow-2xl overflow-hidden border border-amber-100 p-4 sm:p-7 max-h-[92vh] flex flex-col justify-between overflow-y-auto">
         
         {/* Close Button */}
         <button
           onClick={closeAuthModal}
-          className="absolute top-5 right-5 p-2 rounded-full text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+          className="absolute top-4 right-4 p-2 rounded-full text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+          aria-label="Close"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Modal Top Branding & Context Notice */}
-        <div className="text-center mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-amber-100 text-brand-orange flex items-center justify-center text-2xl mx-auto mb-3 shadow-inner">
+        <div className="text-center mb-4 sm:mb-6">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-amber-100 text-brand-orange flex items-center justify-center text-xl sm:text-2xl mx-auto mb-2 sm:mb-3 shadow-inner">
             🍱
           </div>
 
-          <h2 className="text-2xl font-extrabold font-display text-brand-dark">
+          <h2 className="text-xl sm:text-2xl font-extrabold font-display text-brand-dark">
             {mode === 'login' && 'Welcome Back!'}
             {mode === 'signup' && 'Create Student Account'}
             {mode === 'otp' && 'Verify Your Email'}
@@ -172,7 +173,7 @@ export default function AuthModal() {
             {mode === 'reset-password' && 'Set New Password'}
           </h2>
 
-          <p className="text-xs text-stone-500 mt-1 font-medium">
+          <p className="text-xs text-stone-500 mt-1 font-medium px-2">
             {pendingCheckout ? (
               <span className="text-brand-orange font-bold flex items-center justify-center gap-1">
                 <Sparkles className="w-3.5 h-3.5" /> Please sign in to finalize your meal order
@@ -204,7 +205,7 @@ export default function AuthModal() {
 
         {/* Mode Switch Tabs */}
         {(mode === 'login' || mode === 'signup') && (
-          <div className="flex bg-stone-100 p-1 rounded-2xl mb-6">
+          <div className="flex bg-stone-100 p-1 rounded-2xl mb-4 sm:mb-6">
             <button
               onClick={() => { setMode('login'); resetFormAlerts(); }}
               className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
@@ -226,7 +227,7 @@ export default function AuthModal() {
 
         {/* Form: LOGIN */}
         {mode === 'login' && (
-          <form onSubmit={handleLoginSubmit} className="space-y-4">
+          <form onSubmit={handleLoginSubmit} className="space-y-3.5">
             <div>
               <label className="block text-xs font-bold text-stone-700 mb-1">Student Email</label>
               <div className="relative">
@@ -287,7 +288,7 @@ export default function AuthModal() {
 
         {/* Form: SIGNUP */}
         {mode === 'signup' && (
-          <form onSubmit={handleSignupSubmit} className="space-y-3">
+          <form onSubmit={handleSignupSubmit} className="space-y-2.5">
             <div>
               <label className="block text-[11px] font-bold text-stone-700 mb-0.5">Full Name</label>
               <div className="relative">
@@ -370,7 +371,7 @@ export default function AuthModal() {
 
         {/* Form: FORGOT PASSWORD */}
         {mode === 'forgot-password' && (
-          <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+          <form onSubmit={handleForgotPasswordSubmit} className="space-y-3.5">
             <div>
               <label className="block text-xs font-bold text-stone-700 mb-1">Registered Student Email</label>
               <div className="relative">
@@ -407,7 +408,7 @@ export default function AuthModal() {
 
         {/* Form: RESET PASSWORD (FROM EMAIL TOKEN) */}
         {mode === 'reset-password' && (
-          <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+          <form onSubmit={handleResetPasswordSubmit} className="space-y-3.5">
             <div>
               <label className="block text-xs font-bold text-stone-700 mb-1">New Password</label>
               <div className="relative">
@@ -469,14 +470,14 @@ export default function AuthModal() {
 
         {/* Form: OTP VERIFICATION */}
         {mode === 'otp' && (
-          <form onSubmit={handleOtpSubmit} className="space-y-4 text-center">
+          <form onSubmit={handleOtpSubmit} className="space-y-3.5 text-center">
             <p className="text-xs text-stone-600">
               Enter the 6-digit verification code sent to <br />
-              <strong className="text-brand-dark font-bold">{otpEmail}</strong>
+              <strong className="text-brand-dark font-bold truncate block">{otpEmail}</strong>
             </p>
 
-            <div className="relative my-4">
-              <KeyRound className="absolute left-4 top-3.5 w-5 h-5 text-brand-orange" />
+            <div className="relative my-3">
+              <KeyRound className="absolute left-3.5 top-3.5 w-5 h-5 text-brand-orange" />
               <input
                 type="text"
                 required
@@ -484,7 +485,7 @@ export default function AuthModal() {
                 placeholder="123456"
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-amber-50/80 border border-amber-300 rounded-2xl text-center font-display font-extrabold text-2xl tracking-[0.4em] text-brand-terracotta focus:ring-2 focus:ring-brand-orange outline-none"
+                className="w-full pl-10 pr-3 py-2.5 bg-amber-50/80 border border-amber-300 rounded-2xl text-center font-display font-extrabold text-xl sm:text-2xl tracking-[0.3em] text-brand-terracotta focus:ring-2 focus:ring-brand-orange outline-none"
               />
             </div>
 

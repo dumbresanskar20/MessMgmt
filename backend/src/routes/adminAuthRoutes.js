@@ -6,6 +6,7 @@ const {
   setStaffPassword,
   listAdminAccounts,
   toggleStaffStatus,
+  deleteStaffAccount,
   getAdminProfile,
 } = require('../controllers/adminAuthController');
 const { verifyAdmin, requireRole } = require('../middleware/authMiddleware');
@@ -22,5 +23,6 @@ router.get('/me', verifyAdmin, getAdminProfile);
 router.get('/staff', verifyAdmin, requireRole('super_admin'), listAdminAccounts);
 router.post('/staff', verifyAdmin, requireRole('super_admin'), createStaffAccount);
 router.patch('/staff/:id/toggle', verifyAdmin, requireRole('super_admin'), toggleStaffStatus);
+router.delete('/staff/:id', verifyAdmin, requireRole('super_admin'), deleteStaffAccount);
 
 module.exports = router;

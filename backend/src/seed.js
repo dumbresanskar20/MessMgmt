@@ -1,42 +1,35 @@
-const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const dotenv = require('dotenv');
-const AdminUser = require('./models/AdminUser');
-const MenuItem = require('./models/MenuItem');
-const MealWindow = require('./models/MealWindow');
-const Student = require('./models/Student');
+const prisma = require('./config/prisma');
 
 dotenv.config();
 
 const seedData = async () => {
   try {
-    let mongoUri = process.env.ATLAS_URI;
-    if (!mongoUri || mongoUri.includes('example.mongodb.net')) {
-      mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/mess_management';
-    }
-    await mongoose.connect(mongoUri);
-    console.log('[Seed] Connected to MongoDB for seeding...');
+    console.log('[Seed] Connecting to MySQL via Prisma...');
+    await prisma.$connect();
 
     // 1. Seed Super Admin
-    const existingAdmin = await AdminUser.findOne({ email: 'admin@mess.com' });
+    const existingAdmin = await prisma.adminUser.findUnique({ where: { email: 'admin@mess.com' } });
     if (!existingAdmin) {
       const passwordHash = await bcrypt.hash('Admin@123', 10);
-      const superAdmin = new AdminUser({
-        username: 'superadmin',
-        email: 'admin@mess.com',
-        password_hash: passwordHash,
-        role: 'super_admin',
-        is_active: true,
-        is_verified: true,
+      await prisma.adminUser.create({
+        data: {
+          username: 'superadmin',
+          email: 'admin@mess.com',
+          password_hash: passwordHash,
+          role: 'super_admin',
+          is_active: true,
+          is_verified: true,
+        },
       });
-      await superAdmin.save();
       console.log('✅ Super Admin created: admin@mess.com / Admin@123');
     } else {
       console.log('ℹ️ Super Admin already exists.');
     }
 
-    // 2. Seed Meal Windows (Preserves existing is_active & is_full_day settings)
-    const existingWindowsCount = await MealWindow.countDocuments();
+    // 2. Seed Meal Windows
+    const existingWindowsCount = await prisma.mealWindow.count();
     if (existingWindowsCount === 0) {
       const mealWindows = [
         { meal_type: 'breakfast', start_time: '07:30', end_time: '10:00', is_active: true, is_full_day: false },
@@ -44,7 +37,7 @@ const seedData = async () => {
         { meal_type: 'snacks', start_time: '16:30', end_time: '18:00', is_active: true, is_full_day: false },
         { meal_type: 'dinner', start_time: '19:30', end_time: '21:30', is_active: true, is_full_day: false },
       ];
-      await MealWindow.insertMany(mealWindows);
+      await prisma.mealWindow.createMany({ data: mealWindows });
       console.log('✅ Default Meal Windows created (Breakfast, Lunch, Snacks, Dinner).');
     } else {
       console.log('ℹ️ Meal Windows already exist — preserving database settings.');
@@ -173,29 +166,32 @@ const seedData = async () => {
       },
     ];
 
-    await MenuItem.deleteMany({});
-    await MenuItem.insertMany(sampleItems);
+    await prisma.menuItem.deleteMany({});
+    await prisma.menuItem.createMany({ data: sampleItems });
     console.log(`✅ Seeded ${sampleItems.length} menu items successfully.`);
 
     // 4. Seed Test Student Account
-    const existingStudent = await Student.findOne({ email: 'student@test.com' });
+    const existingStudent = await prisma.student.findUnique({ where: { email: 'student@test.com' } });
     if (!existingStudent) {
       const studentPassHash = await bcrypt.hash('Student@123', 10);
-      const testStudent = new Student({
-        name: 'Sanskar Dumbre',
-        email: 'student@test.com',
-        roll_no: '2026-CS-042',
-        password_hash: studentPassHash,
-        is_verified: true,
+      await prisma.student.create({
+        data: {
+          name: 'Sanskar Dumbre',
+          email: 'student@test.com',
+          roll_no: '2026-CS-042',
+          password_hash: studentPassHash,
+          is_verified: true,
+        },
       });
-      await testStudent.save();
       console.log('✅ Test Student created: student@test.com / Student@123 (Verified)');
     }
 
     console.log('\n🎉 Seeding completed successfully!');
+    await prisma.$disconnect();
     process.exit(0);
   } catch (error) {
     console.error('❌ Seeding error:', error);
+    await prisma.$disconnect();
     process.exit(1);
   }
 };

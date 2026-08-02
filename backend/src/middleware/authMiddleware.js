@@ -1,6 +1,5 @@
 const jwt = require('jsonwebtoken');
-const Student = require('../models/Student');
-const AdminUser = require('../models/AdminUser');
+const prisma = require('../config/prisma');
 
 // Middleware to verify Student JWT
 const verifyStudent = async (req, res, next) => {
@@ -17,7 +16,17 @@ const verifyStudent = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Forbidden. Student access required.' });
     }
 
-    const student = await Student.findById(decoded.id).select('-password_hash');
+    const student = await prisma.student.findUnique({
+      where: { id: decoded.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        roll_no: true,
+        is_verified: true,
+      },
+    });
+
     if (!student) {
       return res.status(401).json({ success: false, message: 'Student account not found.' });
     }
@@ -26,8 +35,8 @@ const verifyStudent = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Student email/account is not verified.' });
     }
 
-    req.user = student;
-    req.studentId = student._id;
+    req.user = { ...student, _id: student.id };
+    req.studentId = student.id;
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
@@ -64,7 +73,20 @@ const verifyAdmin = async (req, res, next) => {
       return res.status(403).json({ success: false, code: 'FORBIDDEN_ROLE', message: 'Forbidden. Admin access required.' });
     }
 
-    const admin = await AdminUser.findById(decoded.id).select('-password_hash');
+    const admin = await prisma.adminUser.findUnique({
+      where: { id: decoded.id },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+        is_active: true,
+        is_verified: true,
+        last_login_at: true,
+        created_at: true,
+      },
+    });
+
     if (!admin) {
       console.warn(`[verifyAdmin Auth Fail] Path: ${req.originalUrl} - Admin ID ${decoded.id} not found in DB.`);
       return res.status(401).json({ success: false, code: 'ACCOUNT_NOT_FOUND', message: 'Admin account not found.' });
@@ -75,8 +97,8 @@ const verifyAdmin = async (req, res, next) => {
       return res.status(403).json({ success: false, code: 'ACCOUNT_DEACTIVATED', message: 'Admin account is deactivated.' });
     }
 
-    req.admin = admin;
-    req.adminId = admin._id;
+    req.admin = { ...admin, _id: admin.id };
+    req.adminId = admin.id;
     next();
   } catch (error) {
     console.warn(`[verifyAdmin Auth Fail] Path: ${req.originalUrl} - JWT error: ${error.name} (${error.message})`);
