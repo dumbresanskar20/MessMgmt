@@ -36,7 +36,7 @@ export default function CartDrawer({ onOrderSuccess }) {
 
       if (!frontendKey || frontendKey === 'rzp_test_YourKeyIdHere') {
         console.warn(
-          '[Razorpay Diagnostics] Warning: VITE_RAZORPAY_KEY_ID is missing or set to placeholder string in Vercel environment variables!'
+          '[Razorpay Diagnostics] Warning: VITE_RAZORPAY_KEY_ID is missing or set to placeholder string in environment variables!'
         );
       }
 
@@ -171,62 +171,65 @@ export default function CartDrawer({ onOrderSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
+      {/* Desktop Backdrop Overlay (Hidden on mobile full screen) */}
       <div
-        className="absolute inset-0 bg-stone-900/50 backdrop-blur-xs transition-opacity animate-in fade-in"
+        className="absolute inset-0 bg-stone-900/60 backdrop-blur-xs transition-opacity animate-in fade-in hidden sm:block"
         onClick={() => setIsCartOpen(false)}
       />
 
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between border-l border-amber-100 animate-in slide-in-from-right duration-300">
+      {/* Main Tray Container: FULL SCREEN ON MOBILE (< 640px), Drawer on Desktop (sm: >= 640px) */}
+      <div className="w-full h-full sm:h-auto sm:max-w-md bg-white shadow-2xl flex flex-col justify-between border-l border-amber-100 z-50 animate-in slide-in-from-bottom sm:slide-in-from-right duration-300 overflow-hidden">
 
-          {/* Drawer Header */}
-          <div className="p-5 border-b border-stone-100 flex items-center justify-between bg-stone-50/80">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-amber-100 text-brand-orange rounded-xl">
-                <ShoppingBag className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="font-display font-extrabold text-lg text-brand-dark">Your Meal Tray</h2>
-                <p className="text-[11px] text-stone-500 font-semibold uppercase tracking-wider">
-                  Target Meal: <span className="text-brand-orange">{selectedMealType}</span>
-                </p>
-              </div>
+        {/* Drawer Header */}
+        <div className="p-4 sm:p-5 border-b border-stone-100 flex items-center justify-between bg-stone-50/90 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-amber-100 text-brand-orange rounded-xl">
+              <ShoppingBag className="w-5 h-5" />
             </div>
-
-            <button
-              onClick={() => setIsCartOpen(false)}
-              className="p-2 rounded-full text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div>
+              <h2 className="font-display font-extrabold text-base sm:text-lg text-brand-dark leading-tight">Your Meal Tray</h2>
+              <p className="text-[10px] sm:text-[11px] text-stone-500 font-semibold uppercase tracking-wider">
+                Target Meal: <span className="text-brand-orange">{selectedMealType}</span>
+              </p>
+            </div>
           </div>
 
-          {/* Drawer Items Body */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-4">
-            {errorMessage && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-xs font-medium flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
+          <button
+            onClick={() => setIsCartOpen(false)}
+            className="p-2 rounded-full text-stone-500 hover:text-stone-800 bg-stone-200/60 hover:bg-stone-200 transition-colors flex items-center gap-1.5"
+            aria-label="Close Tray"
+          >
+            <span className="text-xs font-bold sm:hidden">Close</span>
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-            {cartItems.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center py-12">
-                <div className="w-20 h-20 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-4xl mb-4 animate-bounce">
-                  🍽️
-                </div>
-                <h3 className="font-display font-bold text-lg text-stone-800">Your tray is empty — let's fix that!</h3>
-                <p className="text-xs text-stone-500 max-w-xs mt-1">
-                  Explore fresh dosa, thalis, and biryani on the menu and tap 'Add to Tray'.
-                </p>
+        {/* Drawer Items Body */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+          {errorMessage && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-xs font-medium flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {cartItems.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center py-12 space-y-3">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-4xl sm:text-5xl shadow-inner animate-bounce">
+                🍽️
               </div>
-            ) : (
-              cartItems.map((item) => (
+              <h3 className="font-display font-bold text-lg sm:text-xl text-stone-800">Your tray is empty — let's fix that!</h3>
+              <p className="text-xs sm:text-sm text-stone-500 max-w-xs mx-auto leading-relaxed">
+                Explore today's active meal menu items below and tap 'Add to Tray'.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {cartItems.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center gap-3.5 p-3.5 bg-stone-50/80 rounded-2xl border border-stone-100 hover:border-amber-200 transition-all"
+                  className="flex items-center gap-3.5 p-3.5 bg-stone-50/80 rounded-2xl border border-stone-200/80 hover:border-amber-300 transition-all shadow-xs"
                 >
                   <img
                     src={item.image_url}
@@ -235,22 +238,24 @@ export default function CartDrawer({ onOrderSuccess }) {
                   />
 
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-xs font-bold text-brand-dark truncate">{item.name}</h4>
-                    <p className="text-xs font-display font-extrabold text-brand-orange mt-0.5">₹{item.price}</p>
+                    <h4 className="text-xs sm:text-sm font-bold text-brand-dark line-clamp-2 leading-snug">{item.name}</h4>
+                    <p className="text-xs font-display font-extrabold text-brand-orange mt-1">₹{item.price}</p>
                   </div>
 
                   {/* Quantity Counter */}
                   <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-xl border border-stone-200 shadow-xs">
                     <button
                       onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                      className="p-1 text-stone-500 hover:text-brand-orange"
+                      className="p-1 text-stone-500 hover:text-brand-orange transition-colors"
+                      aria-label="Decrease quantity"
                     >
                       <Minus className="w-3.5 h-3.5" />
                     </button>
-                    <span className="text-xs font-bold text-stone-800 w-4 text-center">{item.quantity}</span>
+                    <span className="text-xs font-extrabold text-stone-800 w-4 text-center">{item.quantity}</span>
                     <button
                       onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                      className="p-1 text-stone-500 hover:text-brand-orange"
+                      className="p-1 text-stone-500 hover:text-brand-orange transition-colors"
+                      aria-label="Increase quantity"
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
@@ -259,57 +264,58 @@ export default function CartDrawer({ onOrderSuccess }) {
                   <button
                     onClick={() => removeFromCart(item.id)}
                     className="p-1.5 text-stone-400 hover:text-red-600 transition-colors"
+                    aria-label="Remove item"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
-              ))
-            )}
-          </div>
-
-          {/* Drawer Footer & Checkout CTA */}
-          {cartItems.length > 0 && (
-            <div className="p-5 border-t border-stone-100 bg-white space-y-4">
-              <div className="space-y-1.5 text-xs text-stone-600 font-medium">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span>₹{cartTotal}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Taxes & Canteen Handling</span>
-                  <span className="text-emerald-600 font-bold">FREE</span>
-                </div>
-                <div className="flex justify-between text-sm font-extrabold font-display text-brand-dark pt-2 border-t border-stone-100">
-                  <span>Total Payable</span>
-                  <span className="text-brand-orange text-lg">₹{cartTotal}</span>
-                </div>
-              </div>
-
-              {/* Single Online Checkout Action */}
-              <div className="space-y-2.5">
-                <button
-                  onClick={handleProceedToPay}
-                  disabled={checkoutLoading}
-                  className="w-full py-3.5 bg-gradient-to-r from-brand-orange to-amber-600 hover:from-amber-600 hover:to-brand-orange text-white font-extrabold rounded-2xl text-xs sm:text-sm shadow-warm hover:shadow-cardHover transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {checkoutLoading ? (
-                    <span>Initiating Razorpay...</span>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-4 h-4 shrink-0" />
-                      <span>Pay via Razorpay (₹{cartTotal})</span>
-                      <ArrowRight className="w-4 h-4 shrink-0" />
-                    </>
-                  )}
-                </button>
-                <p className="text-[10px] text-center text-stone-400 font-medium -mt-1">
-                  Pay online and get your token instantly
-                </p>
-              </div>
+              ))}
             </div>
           )}
-
         </div>
+
+        {/* Drawer Footer & Checkout CTA */}
+        {cartItems.length > 0 && (
+          <div className="p-4 sm:p-5 border-t border-stone-100 bg-white space-y-4 shrink-0 shadow-lg">
+            <div className="space-y-1.5 text-xs text-stone-600 font-medium">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span>₹{cartTotal}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Taxes & Canteen Handling</span>
+                <span className="text-emerald-600 font-bold">FREE</span>
+              </div>
+              <div className="flex justify-between text-sm sm:text-base font-extrabold font-display text-brand-dark pt-2 border-t border-stone-100">
+                <span>Total Payable</span>
+                <span className="text-brand-orange text-lg sm:text-xl">₹{cartTotal}</span>
+              </div>
+            </div>
+
+            {/* Single Online Checkout Action */}
+            <div className="space-y-2">
+              <button
+                onClick={handleProceedToPay}
+                disabled={checkoutLoading}
+                className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-brand-orange to-amber-600 hover:from-amber-600 hover:to-brand-orange text-white font-extrabold rounded-2xl text-sm shadow-warm hover:shadow-cardHover transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
+              >
+                {checkoutLoading ? (
+                  <span>Initiating Razorpay...</span>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
+                    <span>Pay via Razorpay (₹{cartTotal})</span>
+                    <ArrowRight className="w-4 h-4 shrink-0" />
+                  </>
+                )}
+              </button>
+              <p className="text-[10px] text-center text-stone-400 font-medium">
+                Pay online & get instant order token number
+              </p>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
