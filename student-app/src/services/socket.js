@@ -19,7 +19,7 @@ export const getSocketUrl = () => {
     }
   }
 
-  return 'https://messmgmt.onrender.com';
+  return 'https://messmgmt-1.onrender.com';
 };
 
 export const createSocketClient = (authToken = null) => {

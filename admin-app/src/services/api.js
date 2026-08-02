@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const rawApiUrl = import.meta.env.VITE_API_URL || 'https://messmgmt.onrender.com/api';
+const rawApiUrl = import.meta.env.VITE_API_URL || 'https://messmgmt-1.onrender.com/api';
 const cleanApiUrl = rawApiUrl.replace(/\/+$/, '');
 const API_BASE_URL = cleanApiUrl.endsWith('/api') ? cleanApiUrl : `${cleanApiUrl}/api`;
 
