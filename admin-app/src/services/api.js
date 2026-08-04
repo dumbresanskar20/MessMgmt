@@ -1,11 +1,18 @@
 import axios from 'axios';
 
-const rawApiUrl = import.meta.env.VITE_API_URL || 'https://messmgmt-1.onrender.com/api';
+const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const envApiUrl = import.meta.env.VITE_API_URL;
+
+const rawApiUrl = isLocalhost
+  ? (envApiUrl && (envApiUrl.includes('localhost') || envApiUrl.includes('127.0.0.1')) ? envApiUrl : 'http://localhost:5000/api')
+  : (envApiUrl || 'https://messmgmt-1.onrender.com/api');
+
 const cleanApiUrl = rawApiUrl.replace(/\/+$/, '');
 const API_BASE_URL = cleanApiUrl.endsWith('/api') ? cleanApiUrl : `${cleanApiUrl}/api`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -24,7 +31,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor: handle 401 Unauthorized errors by clearing stale token
+// Response Interceptor: handle 401 & 403 Auth errors by clearing stale token
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -34,16 +41,19 @@ api.interceptors.response.use(
         window.dispatchEvent(new CustomEvent('subscription_expired', { detail: error.response.data }));
       }
     }
-    if (error.response && error.response.status === 401) {
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       const errorData = error.response.data || {};
       const isAuthError =
+        error.response.status === 401 ||
         errorData.code === 'TOKEN_EXPIRED' ||
         errorData.code === 'INVALID_TOKEN' ||
         errorData.code === 'NO_TOKEN' ||
-        (errorData.message && errorData.message.toLowerCase().includes('token'));
+        errorData.code === 'FORBIDDEN_ROLE' ||
+        errorData.code === 'ACCOUNT_DEACTIVATED' ||
+        (errorData.message && (errorData.message.toLowerCase().includes('token') || errorData.message.toLowerCase().includes('forbidden')));
 
       if (isAuthError) {
-        console.warn('[Admin API] 401 Auth error confirmed — clearing stale admin_token');
+        console.warn(`[Admin API] ${error.response.status} Auth error confirmed — clearing stale admin_token`);
         localStorage.removeItem('admin_token');
         localStorage.removeItem('admin_user');
         if (typeof window !== 'undefined') {

@@ -37,7 +37,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor for token invalidation
+// Response interceptor for token invalidation & subscription status
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -47,10 +47,14 @@ api.interceptors.response.use(
         window.dispatchEvent(new CustomEvent('subscription_expired', { detail: error.response.data }));
       }
     }
-    if (error.response && error.response.status === 401) {
-      console.warn('[API Interceptor] 401 Unauthorized detected - clearing stale session tokens.');
-      localStorage.removeItem('student_token');
-      localStorage.removeItem('student_user');
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      const msg = error.response.data?.message || '';
+      // If token expired, invalid, or account is unverified/forbidden, clear stale token
+      if (error.response.status === 401 || msg.includes('token') || msg.includes('verified') || msg.includes('Forbidden')) {
+        console.warn(`[Student API] ${error.response.status} Authentication error detected — clearing stale session tokens.`);
+        localStorage.removeItem('student_token');
+        localStorage.removeItem('student_user');
+      }
     }
     return Promise.reject(error);
   }
