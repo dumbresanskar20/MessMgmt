@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingBag, User, LogOut, Receipt, ChevronDown } from 'lucide-react';
+import { ShoppingBag, User, LogOut, Receipt, ChevronDown, KeyRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 
@@ -94,6 +94,17 @@ export default function Header({ onOpenOrders }) {
                     >
                       <Receipt className="w-4 h-4 text-brand-orange" />
                       <span>My Order History</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setUserDropdownOpen(false);
+                        openAuthModal(false, 'change-password');
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-xs sm:text-sm text-stone-700 font-semibold hover:bg-amber-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <KeyRound className="w-4 h-4 text-brand-orange" />
+                      <span>Change Password</span>
                     </button>
 
                     <button

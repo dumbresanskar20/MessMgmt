@@ -72,7 +72,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await api.post('/auth/student/signup', formData);
       const data = response.data;
-      return { success: true, requires_otp: data.requires_otp, email: data.email, message: data.message };
+      handleAuthSuccess(data.student, data.accessToken);
+      return { success: true, message: data.message };
     } catch (error) {
       const msg = error.response?.data?.message || 'Signup failed. Please try again.';
       return { success: false, message: msg, errors: error.response?.data?.errors };
@@ -103,6 +104,19 @@ export const AuthProvider = ({ children }) => {
       return { success: true, message: response.data.message };
     } catch (error) {
       const msg = error.response?.data?.message || 'Failed to resend verification code.';
+      return { success: false, message: msg };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const changePassword = async (oldPassword, newPassword) => {
+    setLoading(true);
+    try {
+      const response = await api.post('/auth/student/change-password', { oldPassword, newPassword });
+      return { success: true, message: response.data.message };
+    } catch (error) {
+      const msg = error.response?.data?.message || 'Failed to change password. Please check your old password.';
       return { success: false, message: msg };
     } finally {
       setLoading(false);
@@ -174,6 +188,7 @@ export const AuthProvider = ({ children }) => {
         signup,
         verifyOtp,
         resendOtp,
+        changePassword,
         forgotPassword,
         resetPassword,
         logout,

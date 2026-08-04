@@ -8,6 +8,7 @@ const {
   getStudentProfile,
   forgotPassword,
   resetPassword,
+  changePassword,
 } = require('../controllers/studentAuthController');
 const { verifyStudent } = require('../middleware/authMiddleware');
 const { authLimiter, forgotPasswordLimiter } = require('../middleware/rateLimiter');
@@ -20,7 +21,8 @@ router.post('/login', authLimiter, loginStudent);
 router.post('/forgot-password', forgotPasswordLimiter, forgotPassword);
 router.post('/reset-password', resetPassword);
 
-// Authenticated student route
+// Authenticated student routes
 router.get('/me', verifyStudent, getStudentProfile);
+router.post('/change-password', verifyStudent, changePassword);
 
 module.exports = router;

@@ -86,42 +86,61 @@ const registerStudent = async (req, res) => {
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     if (unverifiedTarget) {
-      await prisma.student.update({
+      const student = await prisma.student.update({
         where: { id: unverifiedTarget.id },
         data: {
           name: name.trim(),
           email: cleanEmail,
           roll_no: cleanRollNo,
           password_hash: hashedPassword,
-          otp_code: otpCode,
-          otp_expires_at: otpExpiresAt,
+          is_verified: true,
+          otp_code: null,
+          otp_expires_at: null,
+        },
+      });
+
+      const { accessToken, refreshToken } = generateTokens(student);
+
+      return res.status(201).json({
+        success: true,
+        message: 'Account created successfully!',
+        accessToken,
+        refreshToken,
+        student: {
+          id: student.id,
+          _id: student.id,
+          name: student.name,
+          email: student.email,
+          roll_no: student.roll_no,
         },
       });
     } else {
-      await prisma.student.create({
+      const student = await prisma.student.create({
         data: {
           name: name.trim(),
           email: cleanEmail,
           roll_no: cleanRollNo,
           password_hash: hashedPassword,
-          is_verified: false,
-          otp_code: otpCode,
-          otp_expires_at: otpExpiresAt,
+          is_verified: true,
+        },
+      });
+
+      const { accessToken, refreshToken } = generateTokens(student);
+
+      return res.status(201).json({
+        success: true,
+        message: 'Account created successfully!',
+        accessToken,
+        refreshToken,
+        student: {
+          id: student.id,
+          _id: student.id,
+          name: student.name,
+          email: student.email,
+          roll_no: student.roll_no,
         },
       });
     }
-
-    // Dispatch OTP email asynchronously so HTTP response is instant
-    sendOTP(cleanEmail, otpCode).catch((err) =>
-      console.warn('[RegisterStudent] Background OTP send warning:', err.message)
-    );
-
-    return res.status(201).json({
-      success: true,
-      message: 'Account created! Please check your email for the verification code.',
-      email: cleanEmail,
-      requires_otp: true,
-    });
   } catch (error) {
     console.error('Student registration error:', error);
     return res.status(500).json({ success: false, message: 'Server error during registration.' });
@@ -299,27 +318,6 @@ const loginStudent = async (req, res) => {
       });
     }
 
-    if (!student.is_verified) {
-      const otpCode = generateOTP();
-      await prisma.student.update({
-        where: { id: student.id },
-        data: {
-          otp_code: otpCode,
-          otp_expires_at: new Date(Date.now() + 10 * 60 * 1000),
-        },
-      });
-      sendOTP(cleanEmail, otpCode).catch((err) =>
-        console.warn('[LoginStudent] Background OTP send warning:', err.message)
-      );
-
-      return res.status(403).json({
-        success: false,
-        message: 'Account is not verified. A verification code has been sent to your email.',
-        requires_otp: true,
-        email: cleanEmail,
-      });
-    }
-
     // Reset failed login counter on success
     await prisma.student.update({
       where: { id: student.id },
@@ -444,6 +442,54 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// Change Password Controller (Authenticated via Old Password verification)
+const changePasswordSchema = z.object({
+  oldPassword: z.string().min(1, 'Old password is required'),
+  newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+});
+
+const changePassword = async (req, res) => {
+  try {
+    const parseResult = changePasswordSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: parseResult.error.errors.map((e) => e.message),
+      });
+    }
+
+    const { oldPassword, newPassword } = parseResult.data;
+    const studentId = req.studentId;
+
+    const student = await prisma.student.findUnique({ where: { id: studentId } });
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student account not found.' });
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, student.password_hash);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Incorrect old password.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    await prisma.student.update({
+      where: { id: studentId },
+      data: { password_hash: hashedPassword },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password changed successfully!',
+    });
+  } catch (error) {
+    console.error('Change password error:', error);
+    return res.status(500).json({ success: false, message: 'Server error while changing password.' });
+  }
+};
+
 module.exports = {
   registerStudent,
   verifyOTP,
@@ -452,4 +498,5 @@ module.exports = {
   getStudentProfile,
   forgotPassword,
   resetPassword,
+  changePassword,
 };

@@ -18,7 +18,7 @@ export default function AuthModal() {
     loading,
   } = useAuth();
   
-  const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'otp' | 'forgot-password' | 'reset-password'
+  const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'otp' | 'forgot-password' | 'reset-password' | 'change-password'
   const [otpEmail, setOtpEmail] = useState('');
 
   // Password visibility toggle states
@@ -26,6 +26,7 @@ export default function AuthModal() {
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [showConfirmResetPassword, setShowConfirmResetPassword] = useState(false);
+  const [showOldPassword, setShowOldPassword] = useState(false);
 
   // Form states
   const [loginEmail, setLoginEmail] = useState('');
@@ -39,6 +40,7 @@ export default function AuthModal() {
   const [otpCode, setOtpCode] = useState('');
   
   const [forgotEmail, setForgotEmail] = useState('');
+  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -89,9 +91,10 @@ export default function AuthModal() {
     });
 
     if (res.success) {
-      setOtpEmail(res.email || signupEmail.trim().toLowerCase());
-      setMode('otp');
-      setSuccessMsg(res.message);
+      setSuccessMsg('Account created successfully! Logging you in...');
+      setTimeout(() => {
+        closeAuthModal();
+      }, 1500);
     } else {
       setErrorMsg(res.errors && res.errors.length ? res.errors.join('. ') : res.message);
     }
@@ -118,6 +121,29 @@ export default function AuthModal() {
     const res = await resendOtp(otpEmail);
     if (res.success) {
       setSuccessMsg(res.message);
+    } else {
+      setErrorMsg(res.message);
+    }
+  };
+
+  const handleChangePasswordSubmit = async (e) => {
+    e.preventDefault();
+    resetFormAlerts();
+
+    if (newPassword !== confirmPassword) {
+      setErrorMsg('New passwords do not match. Please re-enter.');
+      return;
+    }
+
+    const res = await changePassword(oldPassword, newPassword);
+    if (res.success) {
+      setSuccessMsg(res.message);
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        closeAuthModal();
+      }, 2000);
     } else {
       setErrorMsg(res.message);
     }
@@ -180,12 +206,13 @@ export default function AuthModal() {
             🍱
           </div>
 
-          <h2 className="text-xl sm:text-2xl font-extrabold font-display text-brand-dark">
+           <h2 className="text-xl sm:text-2xl font-extrabold font-display text-brand-dark">
             {mode === 'login' && 'Welcome Back!'}
             {mode === 'signup' && 'Create Student Account'}
             {mode === 'otp' && 'Verify Your Email'}
             {mode === 'forgot-password' && 'Reset Your Password'}
             {mode === 'reset-password' && 'Set New Password'}
+            {mode === 'change-password' && 'Change Password'}
           </h2>
 
           <p className="text-xs text-stone-500 mt-1 font-medium px-2">
@@ -197,6 +224,8 @@ export default function AuthModal() {
               'Enter your registered email to receive a password reset link'
             ) : mode === 'reset-password' ? (
               'Enter and confirm your new password below'
+            ) : mode === 'change-password' ? (
+              'Enter your old password and choose a new one below'
             ) : (
               'Sign in to order hot meals with digital token numbers'
             )}
@@ -259,16 +288,7 @@ export default function AuthModal() {
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-stone-700">Password</label>
-                <button
-                  type="button"
-                  onClick={() => { setMode('forgot-password'); resetFormAlerts(); setForgotEmail(loginEmail); }}
-                  className="text-xs font-bold text-brand-orange hover:underline focus:outline-none"
-                >
-                  Forgot Password?
-                </button>
-              </div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-400" />
                 <input
@@ -530,6 +550,91 @@ export default function AuthModal() {
                 ← Back to Sign In
               </button>
             </div>
+          </form>
+        )}
+
+        {/* Form: CHANGE PASSWORD */}
+        {mode === 'change-password' && (
+          <form onSubmit={handleChangePasswordSubmit} className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">Old Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-400" />
+                <input
+                  type={showOldPassword ? 'text' : 'password'}
+                  required
+                  placeholder="Enter old password"
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  className="w-full pl-10 pr-11 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white transition-all outline-none font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowOldPassword(!showOldPassword)}
+                  className="absolute right-3.5 top-3 text-stone-400 hover:text-stone-700 transition-colors"
+                  aria-label={showOldPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showOldPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">New Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-400" />
+                <input
+                  type={showResetPassword ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  placeholder="At least 6 characters"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full pl-10 pr-11 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white transition-all outline-none font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowResetPassword(!showResetPassword)}
+                  className="absolute right-3.5 top-3 text-stone-400 hover:text-stone-700 transition-colors"
+                  aria-label={showResetPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">Confirm New Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-400" />
+                <input
+                  type={showConfirmResetPassword ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  placeholder="Re-enter new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full pl-10 pr-11 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white transition-all outline-none font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmResetPassword(!showConfirmResetPassword)}
+                  className="absolute right-3.5 top-3 text-stone-400 hover:text-stone-700 transition-colors"
+                  aria-label={showConfirmResetPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showConfirmResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-gradient-to-r from-brand-orange to-amber-600 hover:from-amber-600 hover:to-brand-orange text-white font-bold rounded-2xl text-sm shadow-warm transition-all flex items-center justify-center gap-2"
+            >
+              {loading ? 'Updating Password...' : 'Change Password'}
+              <Sparkles className="w-4 h-4" />
+            </button>
           </form>
         )}
 
