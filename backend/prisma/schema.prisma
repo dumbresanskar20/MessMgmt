@@ -1,10 +1,5 @@
 // Prisma schema for Mess Management System
 // Database: MySQL (provider: mysql)
-//
-// DATABASE_URL is environment-specific:
-// - Currently pointed at Aiven for development
-// - Will be repointed to domainz.in cPanel MySQL for production deployment
-// - No code changes needed to switch — only update DATABASE_URL in the deployment environment
 
 generator client {
   provider = "prisma-client-js"
