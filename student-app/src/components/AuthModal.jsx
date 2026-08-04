@@ -292,7 +292,7 @@ export default function AuthModal() {
 
         {/* Form: LOGIN */}
         {mode === 'login' && (
-          <form onSubmit={handleLoginSubmit} className="space-y-3.5">
+          <form onSubmit={handleLoginSubmit} className="space-y-3.5" autoComplete="off">
             <div>
               <label className="block text-xs font-bold text-stone-700 mb-1">Student Email</label>
               <div className="relative">
@@ -303,6 +303,7 @@ export default function AuthModal() {
                   placeholder="student@college.edu"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
+                  autoComplete="off"
                   className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white transition-all outline-none font-medium"
                 />
               </div>
@@ -318,6 +319,7 @@ export default function AuthModal() {
                   placeholder="••••••••"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
+                  autoComplete="new-password"
                   className="w-full pl-10 pr-11 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white transition-all outline-none font-medium"
                 />
                 <button
