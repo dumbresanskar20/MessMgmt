@@ -9,30 +9,37 @@ const generateOTP = () => {
 const sendEmail = async ({ to, subject, html, text }) => {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM } = process.env;
 
-  if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
+  if (SMTP_USER && SMTP_PASS) {
     try {
-      const transporter = nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: Number(SMTP_PORT) || 587,
-        secure: Number(SMTP_PORT) === 465,
-        auth: {
-          user: SMTP_USER,
-          pass: SMTP_PASS,
-        },
-        connectionTimeout: 4000,
-        greetingTimeout: 4000,
-        socketTimeout: 5000,
-      });
+      const isGmail = !SMTP_HOST || SMTP_HOST.includes('gmail');
+      const transportConfig = isGmail
+        ? {
+            service: 'gmail',
+            auth: { user: SMTP_USER, pass: SMTP_PASS },
+          }
+        : {
+            host: SMTP_HOST,
+            port: Number(SMTP_PORT) || 587,
+            secure: Number(SMTP_PORT) === 465,
+            auth: { user: SMTP_USER, pass: SMTP_PASS },
+            connectionTimeout: 8000,
+            greetingTimeout: 8000,
+            socketTimeout: 10000,
+          };
+
+      const transporter = nodemailer.createTransport(transportConfig);
+
+      const senderEmail = EMAIL_FROM && EMAIL_FROM.includes('@') ? EMAIL_FROM : `"Mess Management System" <${SMTP_USER}>`;
 
       const info = await transporter.sendMail({
-        from: EMAIL_FROM || '"Mess Management System" <no-reply@messapp.com>',
+        from: senderEmail,
         to,
         subject,
         text: text || html.replace(/<[^>]*>?/gm, ''),
         html,
       });
 
-      console.log(`[Email Service] Email sent to ${to}: ${info.messageId}`);
+      console.log(`[Email Service] Email sent successfully to ${to}: ${info.messageId}`);
       return { success: true, messageId: info.messageId };
     } catch (err) {
       console.warn(`[Email Service] Failed to send email via SMTP (${err.message}). Logging message instead.`);
