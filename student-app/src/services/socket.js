@@ -51,7 +51,11 @@ export const createSocketClient = (authToken = null) => {
   });
 
   socket.on('disconnect', (reason) => {
-    console.warn(`[Socket.IO Disconnected] Reason: ${reason}`);
+    if (reason === 'io client disconnect') {
+      console.log(`[Socket.IO Client] Intentional client disconnect.`);
+    } else {
+      console.warn(`[Socket.IO Disconnected] Reason: ${reason}`);
+    }
   });
 
   return socket;

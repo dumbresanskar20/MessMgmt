@@ -48,7 +48,11 @@ export const createAdminSocketClient = (token) => {
   });
 
   socket.on('disconnect', (reason) => {
-    console.warn(`[Admin Socket.IO Disconnected] Reason: ${reason}`);
+    if (reason === 'io client disconnect') {
+      console.log(`[Admin Socket.IO Client] Intentional client disconnect.`);
+    } else {
+      console.warn(`[Admin Socket.IO Disconnected] Reason: ${reason}`);
+    }
   });
 
   return socket;
