@@ -12,6 +12,7 @@ export default function AuthModal() {
     login,
     signup,
     verifyOtp,
+    resendOtp,
     forgotPassword,
     resetPassword,
     loading,
@@ -65,7 +66,7 @@ export default function AuthModal() {
     const res = await login(loginEmail, loginPassword);
     if (!res.success) {
       if (res.requires_otp) {
-        setOtpEmail(res.email);
+        setOtpEmail(res.email || loginEmail.trim().toLowerCase());
         setMode('otp');
         setSuccessMsg(res.message);
       } else {
@@ -88,11 +89,11 @@ export default function AuthModal() {
     });
 
     if (res.success) {
-      setOtpEmail(res.email);
+      setOtpEmail(res.email || signupEmail.trim().toLowerCase());
       setMode('otp');
       setSuccessMsg(res.message);
     } else {
-      setErrorMsg(res.message);
+      setErrorMsg(res.errors && res.errors.length ? res.errors.join('. ') : res.message);
     }
   };
 
@@ -105,6 +106,20 @@ export default function AuthModal() {
       setErrorMsg(res.message);
     } else {
       setSuccessMsg(res.message);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    resetFormAlerts();
+    if (!otpEmail) {
+      setErrorMsg('Email address is missing.');
+      return;
+    }
+    const res = await resendOtp(otpEmail);
+    if (res.success) {
+      setSuccessMsg(res.message);
+    } else {
+      setErrorMsg(res.message);
     }
   };
 
@@ -497,6 +512,24 @@ export default function AuthModal() {
               {loading ? 'Verifying OTP...' : 'Verify OTP & Finish'}
               <Sparkles className="w-4 h-4" />
             </button>
+
+            <div className="flex items-center justify-between text-xs pt-1 px-1">
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={loading}
+                className="font-bold text-brand-orange hover:underline focus:outline-none disabled:opacity-50"
+              >
+                Resend Code
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMode('login'); resetFormAlerts(); }}
+                className="font-bold text-stone-500 hover:text-stone-800 transition-colors"
+              >
+                ← Back to Sign In
+              </button>
+            </div>
           </form>
         )}
 

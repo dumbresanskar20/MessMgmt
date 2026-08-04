@@ -1,6 +1,12 @@
 import axios from 'axios';
 
-const rawApiUrl = import.meta.env.VITE_API_URL || 'https://messmgmt-1.onrender.com/api';
+const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const envApiUrl = import.meta.env.VITE_API_URL;
+
+const rawApiUrl = isLocalhost
+  ? (envApiUrl && (envApiUrl.includes('localhost') || envApiUrl.includes('127.0.0.1')) ? envApiUrl : 'http://localhost:5000/api')
+  : (envApiUrl || 'https://messmgmt-1.onrender.com/api');
+
 const cleanApiUrl = rawApiUrl.replace(/\/+$/, '');
 const API_BASE_URL = cleanApiUrl.endsWith('/api') ? cleanApiUrl : `${cleanApiUrl}/api`;
 
@@ -13,6 +19,7 @@ if (typeof window !== 'undefined' && window.location.protocol === 'https:' && AP
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },

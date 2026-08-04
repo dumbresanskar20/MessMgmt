@@ -58,61 +58,63 @@ const registerStudent = async (req, res) => {
     // Check if a verified student already exists with either email or roll_no
     const existingByEmail = await prisma.student.findUnique({ where: { email: cleanEmail } });
     const existingByRollNo = await prisma.student.findUnique({ where: { roll_no: cleanRollNo } });
-    const existingStudent = existingByEmail || existingByRollNo;
 
-    if (existingStudent) {
-      if (existingStudent.is_verified) {
-        return res.status(400).json({
-          success: false,
-          message: 'An account with this email or roll number already exists.',
-        });
-      } else {
-        // Unverified student — resend OTP with updated details
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-        const otpCode = generateOTP();
-        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-        await prisma.student.update({
-          where: { id: existingStudent.id },
-          data: {
-            name: name.trim(),
-            password_hash: hashedPassword,
-            otp_code: otpCode,
-            otp_expires_at: otpExpiresAt,
-          },
-        });
-
-        await sendOTP(cleanEmail, otpCode);
-
-        return res.status(200).json({
-          success: true,
-          message: 'Verification code resent. Please verify your OTP to complete signup.',
-          email: cleanEmail,
-          requires_otp: true,
-        });
-      }
+    if (existingByEmail?.is_verified) {
+      return res.status(400).json({
+        success: false,
+        message: 'An account with this email address already exists.',
+      });
     }
 
-    // New student signup
+    if (existingByRollNo?.is_verified) {
+      return res.status(400).json({
+        success: false,
+        message: 'An account with this roll number already exists.',
+      });
+    }
+
+    // If both exist as separate unverified records, delete the roll_no one to clean up conflicts
+    if (existingByEmail && existingByRollNo && existingByEmail.id !== existingByRollNo.id) {
+      await prisma.student.delete({ where: { id: existingByRollNo.id } });
+    }
+
+    const unverifiedTarget = existingByEmail || existingByRollNo;
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     const otpCode = generateOTP();
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    const newStudent = await prisma.student.create({
-      data: {
-        name: name.trim(),
-        email: cleanEmail,
-        roll_no: cleanRollNo,
-        password_hash: hashedPassword,
-        is_verified: false,
-        otp_code: otpCode,
-        otp_expires_at: otpExpiresAt,
-      },
-    });
+    if (unverifiedTarget) {
+      await prisma.student.update({
+        where: { id: unverifiedTarget.id },
+        data: {
+          name: name.trim(),
+          email: cleanEmail,
+          roll_no: cleanRollNo,
+          password_hash: hashedPassword,
+          otp_code: otpCode,
+          otp_expires_at: otpExpiresAt,
+        },
+      });
+    } else {
+      await prisma.student.create({
+        data: {
+          name: name.trim(),
+          email: cleanEmail,
+          roll_no: cleanRollNo,
+          password_hash: hashedPassword,
+          is_verified: false,
+          otp_code: otpCode,
+          otp_expires_at: otpExpiresAt,
+        },
+      });
+    }
 
-    await sendOTP(cleanEmail, otpCode);
+    // Dispatch OTP email asynchronously so HTTP response is instant
+    sendOTP(cleanEmail, otpCode).catch((err) =>
+      console.warn('[RegisterStudent] Background OTP send warning:', err.message)
+    );
 
     return res.status(201).json({
       success: true,
@@ -141,9 +143,21 @@ const verifyOTP = async (req, res) => {
     const { email, otp_code } = parseResult.data;
     const cleanEmail = email.toLowerCase().trim();
 
-    const student = await prisma.student.findUnique({ where: { email: cleanEmail } });
+    let student = await prisma.student.findUnique({ where: { email: cleanEmail } });
+
+    // Fallback: If not found by email, check if an unverified account matches this exact active OTP code
+    if (!student && otp_code) {
+      student = await prisma.student.findFirst({
+        where: {
+          otp_code: otp_code.trim(),
+          is_verified: false,
+          otp_expires_at: { gt: new Date() },
+        },
+      });
+    }
+
     if (!student) {
-      return res.status(404).json({ success: false, message: 'Student account not found.' });
+      return res.status(404).json({ success: false, message: 'Student account not found or verification code is invalid.' });
     }
 
     if (student.is_verified) {
@@ -171,7 +185,7 @@ const verifyOTP = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Verification code has expired. Request a new one.' });
     }
 
-    await prisma.student.update({
+    const updatedStudent = await prisma.student.update({
       where: { id: student.id },
       data: {
         is_verified: true,
@@ -180,7 +194,7 @@ const verifyOTP = async (req, res) => {
       },
     });
 
-    const { accessToken, refreshToken } = generateTokens(student);
+    const { accessToken, refreshToken } = generateTokens(updatedStudent);
 
     return res.status(200).json({
       success: true,
@@ -188,11 +202,11 @@ const verifyOTP = async (req, res) => {
       accessToken,
       refreshToken,
       student: {
-        id: student.id,
-        _id: student.id,
-        name: student.name,
-        email: student.email,
-        roll_no: student.roll_no,
+        id: updatedStudent.id,
+        _id: updatedStudent.id,
+        name: updatedStudent.name,
+        email: updatedStudent.email,
+        roll_no: updatedStudent.roll_no,
       },
     });
   } catch (error) {
@@ -227,7 +241,9 @@ const resendOTP = async (req, res) => {
       },
     });
 
-    await sendOTP(cleanEmail, otpCode);
+    sendOTP(cleanEmail, otpCode).catch((err) =>
+      console.warn('[ResendOTP] Background OTP send warning:', err.message)
+    );
 
     return res.status(200).json({
       success: true,
@@ -292,7 +308,9 @@ const loginStudent = async (req, res) => {
           otp_expires_at: new Date(Date.now() + 10 * 60 * 1000),
         },
       });
-      await sendOTP(cleanEmail, otpCode);
+      sendOTP(cleanEmail, otpCode).catch((err) =>
+        console.warn('[LoginStudent] Background OTP send warning:', err.message)
+      );
 
       return res.status(403).json({
         success: false,

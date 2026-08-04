@@ -52,6 +52,14 @@ export const AuthProvider = ({ children }) => {
       handleAuthSuccess(data.student, data.accessToken);
       return { success: true, message: data.message };
     } catch (error) {
+      if (error.response?.data?.requires_otp) {
+        return {
+          success: false,
+          requires_otp: true,
+          email: error.response.data.email,
+          message: error.response.data.message,
+        };
+      }
       const msg = error.response?.data?.message || error.message || 'Login failed. Please check your credentials.';
       return { success: false, message: msg };
     } finally {
@@ -82,6 +90,19 @@ export const AuthProvider = ({ children }) => {
       return { success: true, message: data.message };
     } catch (error) {
       const msg = error.response?.data?.message || 'Verification failed. Invalid or expired OTP.';
+      return { success: false, message: msg };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendOtp = async (email) => {
+    setLoading(true);
+    try {
+      const response = await api.post('/auth/student/resend-otp', { email });
+      return { success: true, message: response.data.message };
+    } catch (error) {
+      const msg = error.response?.data?.message || 'Failed to resend verification code.';
       return { success: false, message: msg };
     } finally {
       setLoading(false);
@@ -152,6 +173,7 @@ export const AuthProvider = ({ children }) => {
         login,
         signup,
         verifyOtp,
+        resendOtp,
         forgotPassword,
         resetPassword,
         logout,
