@@ -47,12 +47,33 @@ export default function AuthModal() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  const resetFormInputs = () => {
+    setLoginEmail('');
+    setLoginPassword('');
+    setSignupName('');
+    setSignupEmail('');
+    setSignupRollNo('');
+    setSignupPassword('');
+    setOtpCode('');
+    setForgotEmail('');
+    setOldPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setErrorMsg('');
+    setSuccessMsg('');
+  };
+
   // Sync mode from context when modal opens or mode changes
   useEffect(() => {
     if (authModalMode) {
       setMode(authModalMode);
     }
   }, [authModalMode, authModalOpen]);
+
+  // Clear inputs when modal opens or closes
+  useEffect(() => {
+    resetFormInputs();
+  }, [authModalOpen]);
 
   if (!authModalOpen) return null;
 
