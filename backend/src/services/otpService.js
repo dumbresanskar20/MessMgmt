@@ -29,7 +29,9 @@ const sendEmail = async ({ to, subject, html, text }) => {
 
       const transporter = nodemailer.createTransport(transportConfig);
 
-      const senderEmail = EMAIL_FROM && EMAIL_FROM.includes('@') ? EMAIL_FROM : `"Mess Management System" <${SMTP_USER}>`;
+      const senderEmail = (EMAIL_FROM && EMAIL_FROM.includes(SMTP_USER))
+        ? EMAIL_FROM
+        : `"Mess Management System" <${SMTP_USER}>`;
 
       const info = await transporter.sendMail({
         from: senderEmail,
