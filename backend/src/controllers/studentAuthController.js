@@ -114,10 +114,12 @@ const registerStudent = async (req, res) => {
       });
     }
 
-    // Send OTP email in the background
-    sendOTP(cleanEmail, otpCode).catch((err) =>
-      console.warn('[Signup] Background OTP send warning:', err.message)
-    );
+    // Send OTP email and await resolution
+    try {
+      await sendOTP(cleanEmail, otpCode);
+    } catch (err) {
+      console.warn('[Signup] Background OTP send warning:', err.message);
+    }
 
     return res.status(201).json({
       success: true,
@@ -232,9 +234,11 @@ const resendOTP = async (req, res) => {
       },
     });
 
-    sendOTP(cleanEmail, otpCode).catch((err) =>
-      console.warn('[ResendOTP] Background OTP send warning:', err.message)
-    );
+    try {
+      await sendOTP(cleanEmail, otpCode);
+    } catch (err) {
+      console.warn('[ResendOTP] Background OTP send warning:', err.message);
+    }
 
     return res.status(200).json({
       success: true,
@@ -309,9 +313,11 @@ const loginStudent = async (req, res) => {
         },
       });
 
-      sendOTP(cleanEmail, otpCode).catch((err) =>
-        console.warn('[Login OTP] Background OTP send warning:', err.message)
-      );
+      try {
+        await sendOTP(cleanEmail, otpCode);
+      } catch (err) {
+        console.warn('[Login OTP] Background OTP send warning:', err.message);
+      }
 
       return res.status(401).json({
         success: false,
