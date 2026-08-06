@@ -16,10 +16,26 @@ export default function AuthModal() {
     forgotPassword,
     resetPassword,
     loading,
+    setResetToken,
   } = useAuth();
   
   const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'otp' | 'forgot-password' | 'reset-password' | 'change-password'
   const [otpEmail, setOtpEmail] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    let timer;
+    if (cooldown > 0) {
+      timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [cooldown]);
+
+  useEffect(() => {
+    if (mode === 'otp') {
+      setCooldown(60);
+    }
+  }, [mode]);
 
   // Password visibility toggle states
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -112,10 +128,9 @@ export default function AuthModal() {
     });
 
     if (res.success) {
-      setSuccessMsg('Account created successfully! Logging you in...');
-      setTimeout(() => {
-        closeAuthModal();
-      }, 1500);
+      setOtpEmail(signupEmail.trim().toLowerCase());
+      setMode('otp');
+      setSuccessMsg(res.message || 'Account created successfully! An OTP has been sent to your email.');
     } else {
       setErrorMsg(res.errors && res.errors.length ? res.errors.join('. ') : res.message);
     }
@@ -139,9 +154,11 @@ export default function AuthModal() {
       setErrorMsg('Email address is missing.');
       return;
     }
+    if (cooldown > 0) return;
     const res = await resendOtp(otpEmail);
     if (res.success) {
       setSuccessMsg(res.message);
+      setCooldown(60);
     } else {
       setErrorMsg(res.message);
     }
@@ -199,6 +216,13 @@ export default function AuthModal() {
     const res = await resetPassword(contextResetToken, newPassword);
     if (res.success) {
       setSuccessMsg(res.message);
+      setResetToken(null);
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('reset_token');
+        url.searchParams.delete('token');
+        window.history.replaceState({}, '', url.pathname + url.search);
+      }
       setTimeout(() => {
         setMode('login');
         setLoginPassword('');
@@ -331,6 +355,16 @@ export default function AuthModal() {
                   {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => { setMode('forgot-password'); resetFormAlerts(); }}
+                className="text-xs font-bold text-brand-orange hover:underline focus:outline-none"
+              >
+                Forgot Password?
+              </button>
             </div>
 
             <button
@@ -560,10 +594,10 @@ export default function AuthModal() {
               <button
                 type="button"
                 onClick={handleResendOtp}
-                disabled={loading}
-                className="font-bold text-brand-orange hover:underline focus:outline-none disabled:opacity-50"
+                disabled={loading || cooldown > 0}
+                className="font-bold text-brand-orange hover:underline focus:outline-none disabled:opacity-50 disabled:no-underline"
               >
-                Resend Code
+                {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Code'}
               </button>
               <button
                 type="button"

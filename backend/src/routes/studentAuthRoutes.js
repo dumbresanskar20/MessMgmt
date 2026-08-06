@@ -11,12 +11,12 @@ const {
   changePassword,
 } = require('../controllers/studentAuthController');
 const { verifyStudent } = require('../middleware/authMiddleware');
-const { authLimiter, forgotPasswordLimiter } = require('../middleware/rateLimiter');
+const { authLimiter, forgotPasswordLimiter, resendOtpLimiter } = require('../middleware/rateLimiter');
 
 // Rate limited public auth routes
 router.post('/signup', authLimiter, registerStudent);
 router.post('/verify-otp', authLimiter, verifyOTP);
-router.post('/resend-otp', authLimiter, resendOTP);
+router.post('/resend-otp', resendOtpLimiter, resendOTP);
 router.post('/login', authLimiter, loginStudent);
 router.post('/forgot-password', forgotPasswordLimiter, forgotPassword);
 router.post('/reset-password', resetPassword);

@@ -55,10 +55,11 @@ const registerStudent = async (req, res) => {
     const cleanEmail = email.toLowerCase().trim();
     const cleanRollNo = roll_no.trim();
 
-    // Check if a verified student already exists with either email or roll_no
+    // Check if a student already exists with either email or roll_no
     const existingByEmail = await prisma.student.findUnique({ where: { email: cleanEmail } });
     const existingByRollNo = await prisma.student.findUnique({ where: { roll_no: cleanRollNo } });
 
+    // If verified account exists, block registration
     if (existingByEmail?.is_verified) {
       return res.status(400).json({
         success: false,
@@ -85,62 +86,44 @@ const registerStudent = async (req, res) => {
     const otpCode = generateOTP();
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
+    let student;
     if (unverifiedTarget) {
-      const student = await prisma.student.update({
+      student = await prisma.student.update({
         where: { id: unverifiedTarget.id },
         data: {
           name: name.trim(),
           email: cleanEmail,
           roll_no: cleanRollNo,
           password_hash: hashedPassword,
-          is_verified: true,
-          otp_code: null,
-          otp_expires_at: null,
-        },
-      });
-
-      const { accessToken, refreshToken } = generateTokens(student);
-
-      return res.status(201).json({
-        success: true,
-        message: 'Account created successfully!',
-        accessToken,
-        refreshToken,
-        student: {
-          id: student.id,
-          _id: student.id,
-          name: student.name,
-          email: student.email,
-          roll_no: student.roll_no,
+          is_verified: false,
+          otp_code: otpCode,
+          otp_expires_at: otpExpiresAt,
         },
       });
     } else {
-      const student = await prisma.student.create({
+      student = await prisma.student.create({
         data: {
           name: name.trim(),
           email: cleanEmail,
           roll_no: cleanRollNo,
           password_hash: hashedPassword,
-          is_verified: true,
-        },
-      });
-
-      const { accessToken, refreshToken } = generateTokens(student);
-
-      return res.status(201).json({
-        success: true,
-        message: 'Account created successfully!',
-        accessToken,
-        refreshToken,
-        student: {
-          id: student.id,
-          _id: student.id,
-          name: student.name,
-          email: student.email,
-          roll_no: student.roll_no,
+          is_verified: false,
+          otp_code: otpCode,
+          otp_expires_at: otpExpiresAt,
         },
       });
     }
+
+    // Send OTP email in the background
+    sendOTP(cleanEmail, otpCode).catch((err) =>
+      console.warn('[Signup] Background OTP send warning:', err.message)
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: `A verification OTP code has been sent to ${cleanEmail}.`,
+      email: cleanEmail,
+    });
   } catch (error) {
     console.error('Student registration error:', error);
     return res.status(500).json({ success: false, message: 'Server error during registration.' });
@@ -162,28 +145,17 @@ const verifyOTP = async (req, res) => {
     const { email, otp_code } = parseResult.data;
     const cleanEmail = email.toLowerCase().trim();
 
-    let student = await prisma.student.findUnique({ where: { email: cleanEmail } });
-
-    // Fallback: If not found by email, check if an unverified account matches this exact active OTP code
-    if (!student && otp_code) {
-      student = await prisma.student.findFirst({
-        where: {
-          otp_code: otp_code.trim(),
-          is_verified: false,
-          otp_expires_at: { gt: new Date() },
-        },
-      });
-    }
+    const student = await prisma.student.findUnique({ where: { email: cleanEmail } });
 
     if (!student) {
-      return res.status(404).json({ success: false, message: 'Student account not found or verification code is invalid.' });
+      return res.status(404).json({ success: false, message: 'No account found with this email address.' });
     }
 
     if (student.is_verified) {
       const { accessToken, refreshToken } = generateTokens(student);
       return res.status(200).json({
         success: true,
-        message: 'Account already verified.',
+        message: 'Account is already verified.',
         accessToken,
         refreshToken,
         student: {
@@ -200,8 +172,8 @@ const verifyOTP = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid verification code.' });
     }
 
-    if (student.otp_expires_at && student.otp_expires_at < new Date()) {
-      return res.status(400).json({ success: false, message: 'Verification code has expired. Request a new one.' });
+    if (!student.otp_expires_at || student.otp_expires_at < new Date()) {
+      return res.status(400).json({ success: false, message: 'Verification code has expired. Please request a new one.' });
     }
 
     const updatedStudent = await prisma.student.update({
@@ -238,7 +210,7 @@ const verifyOTP = async (req, res) => {
 const resendOTP = async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
+    if (!email) return res.status(400).json({ success: false, message: 'Email is required.' });
 
     const cleanEmail = email.toLowerCase().trim();
     const student = await prisma.student.findUnique({ where: { email: cleanEmail } });
@@ -248,7 +220,7 @@ const resendOTP = async (req, res) => {
     }
 
     if (student.is_verified) {
-      return res.status(400).json({ success: false, message: 'Account is already verified. Please login.' });
+      return res.status(400).json({ success: false, message: 'This account is already verified — please log in.' });
     }
 
     const otpCode = generateOTP();
@@ -318,11 +290,36 @@ const loginStudent = async (req, res) => {
       });
     }
 
-    // Reset failed login counter on success
+    // Reset failed login counter on password match
     await prisma.student.update({
       where: { id: student.id },
       data: { failed_login_attempts: 0, locked_until: null },
     });
+
+    // Check if account is verified
+    if (!student.is_verified) {
+      const otpCode = generateOTP();
+      const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+      await prisma.student.update({
+        where: { id: student.id },
+        data: {
+          otp_code: otpCode,
+          otp_expires_at: otpExpiresAt,
+        },
+      });
+
+      sendOTP(cleanEmail, otpCode).catch((err) =>
+        console.warn('[Login OTP] Background OTP send warning:', err.message)
+      );
+
+      return res.status(401).json({
+        success: false,
+        requires_otp: true,
+        email: cleanEmail,
+        message: 'Please verify your email before logging in. A verification code has been sent to your email.',
+      });
+    }
 
     const { accessToken, refreshToken } = generateTokens(student);
 
@@ -368,7 +365,7 @@ const forgotPassword = async (req, res) => {
 
     if (student) {
       const resetToken = crypto.randomBytes(32).toString('hex');
-      const resetExpires = new Date(Date.now() + 15 * 60 * 1000);
+      const resetExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from now
 
       await prisma.student.update({
         where: { id: student.id },
@@ -439,7 +436,7 @@ const resetPassword = async (req, res) => {
   } catch (error) {
     console.error('Reset password error:', error);
     return res.status(500).json({ success: false, message: 'Server error resetting password.' });
-  }
+  };
 };
 
 // Change Password Controller (Authenticated via Old Password verification)

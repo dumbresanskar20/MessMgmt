@@ -72,7 +72,6 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await api.post('/auth/student/signup', formData);
       const data = response.data;
-      handleAuthSuccess(data.student, data.accessToken);
       return { success: true, message: data.message };
     } catch (error) {
       const msg = error.response?.data?.message || 'Signup failed. Please try again.';
