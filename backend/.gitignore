@@ -5,4 +5,5 @@ ds_store
 *.log
 *.db
 dev.db
+scratch/
 

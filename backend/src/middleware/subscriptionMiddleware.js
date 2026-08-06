@@ -16,6 +16,8 @@ const checkSubscriptionStatus = async (req, res, next) => {
     path.startsWith('/webhook/razorpay-subscription') ||
     path.startsWith('/api/auth/admin') ||
     path.startsWith('/auth/admin') ||
+    path.startsWith('/api/owner') ||
+    path.startsWith('/owner') ||
     path === '/api/health' ||
     path === '/';
 

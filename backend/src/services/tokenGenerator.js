@@ -1,4 +1,4 @@
-const prisma = require('../config/prisma');
+const prisma = require('../database/prisma');
 
 const MEAL_PREFIXES = {
   breakfast: 'B',

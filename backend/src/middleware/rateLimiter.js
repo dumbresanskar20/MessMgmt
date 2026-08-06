@@ -53,10 +53,23 @@ const resendOtpLimiter = rateLimit({
   },
 });
 
+// Stricter rate limiter for owner endpoints
+const ownerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // Limit each IP to 30 requests per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many developer panel attempts, please try again after 15 minutes.',
+  },
+});
+
 module.exports = {
   authLimiter,
   apiLimiter,
   forgotPasswordLimiter,
   resendOtpLimiter,
+  ownerLimiter,
 };
 

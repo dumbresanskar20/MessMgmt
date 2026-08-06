@@ -15,6 +15,7 @@ datasource db {
 // ─────────────────────────────────────────────
 
 enum AdminRole {
+  owner
   super_admin
   staff
 }
@@ -77,6 +78,7 @@ model Student {
   locked_until          DateTime?
   reset_token           String?
   reset_token_expires   DateTime?
+  is_active             Boolean   @default(true)
   created_at            DateTime  @default(now())
 
   orders Order[]
@@ -196,3 +198,39 @@ model Subscription {
 
   @@map("Subscription")
 }
+
+model OwnerActionLog {
+  id              Int      @id @default(autoincrement())
+  owner_id        Int
+  action_type     String
+  target_table    String
+  target_id       Int
+  changes_summary String?  @db.Text
+  timestamp       DateTime @default(now())
+
+  @@map("OwnerActionLog")
+}
+
+model Developer {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique
+  password_hash String
+  name          String
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@map("Developer")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  user_email String
+  action     String
+  module     String
+  ip_address String?
+  browser    String?
+  created_at DateTime @default(now())
+
+  @@map("AuditLog")
+}
+

@@ -8,7 +8,7 @@
 
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
-const prisma = require('../config/prisma');
+const prisma = require('../database/prisma');
 const { generateTokenNumber } = require('../services/tokenGenerator');
 const { computeMealStatus } = require('./menuController');
 

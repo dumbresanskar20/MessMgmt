@@ -9,7 +9,7 @@
 
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
-const prisma = require('../config/prisma');
+const prisma = require('../database/prisma');
 const SUBSCRIPTION_PLANS = require('../config/subscriptionPlans');
 
 /**

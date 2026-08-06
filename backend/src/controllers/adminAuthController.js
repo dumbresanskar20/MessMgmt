@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { z } = require('zod');
-const prisma = require('../config/prisma');
+const prisma = require('../database/prisma');
 const { sendAdminInvitation } = require('../services/otpService');
 
 const loginSchema = z.object({

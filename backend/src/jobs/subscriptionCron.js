@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const prisma = require('../config/prisma');
+const prisma = require('../database/prisma');
 
 /**
  * Proactive daily cron job to check subscription expiration and update DB status.

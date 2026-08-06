@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const prisma = require('../config/prisma');
+const prisma = require('../database/prisma');
 
 /**
  * Permanently delete orders older than the specified retention window (default: 60 days).

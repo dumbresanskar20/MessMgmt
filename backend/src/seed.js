@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const dotenv = require('dotenv');
-const prisma = require('./config/prisma');
+const prisma = require('./database/prisma');
 
 dotenv.config();
 
@@ -184,6 +184,20 @@ const seedData = async () => {
         },
       });
       console.log('✅ Test Student created: student@test.com / Student@123 (Verified)');
+    }
+
+    // 5. Seed Test Developer Account
+    const existingDeveloper = await prisma.developer.findFirst({ where: { email: 'developer@mess.com' } });
+    if (!existingDeveloper) {
+      const devPassHash = await bcrypt.hash('Developer@123', 10);
+      await prisma.developer.create({
+        data: {
+          name: 'Super Developer',
+          email: 'developer@mess.com',
+          password_hash: devPassHash,
+        },
+      });
+      console.log('✅ Test Developer created: developer@mess.com / Developer@123');
     }
 
     console.log('\n🎉 Seeding completed successfully!');

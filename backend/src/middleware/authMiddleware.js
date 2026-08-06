@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const prisma = require('../config/prisma');
+const prisma = require('../database/prisma');
 
 // Middleware to verify Student JWT
 const verifyStudent = async (req, res, next) => {
@@ -125,8 +125,50 @@ const requireRole = (...roles) => {
   };
 };
 
+// Middleware to verify Owner JWT specifically
+const verifyOwner = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required. No token provided.' });
+    }
+
+    let token = authHeader.split(' ')[1];
+    if (token) {
+      token = token.replace(/^"(.*)"$/, '$1').trim();
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_access_key_change_in_production');
+
+    if (decoded.role !== 'owner') {
+      return res.status(403).json({ success: false, message: 'Forbidden. Owner access required.' });
+    }
+
+    const owner = await prisma.adminUser.findFirst({
+      where: { id: decoded.id, role: 'owner' }
+    });
+
+    if (!owner) {
+      return res.status(401).json({ success: false, message: 'Owner account not found.' });
+    }
+
+    if (!owner.is_active) {
+      return res.status(403).json({ success: false, message: 'Owner account is deactivated.' });
+    }
+
+    req.owner = owner;
+    next();
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, message: 'Token expired. Please login again.' });
+    }
+    return res.status(401).json({ success: false, message: 'Invalid authentication token.' });
+  }
+};
+
 module.exports = {
   verifyStudent,
   verifyAdmin,
   requireRole,
+  verifyOwner,
 };

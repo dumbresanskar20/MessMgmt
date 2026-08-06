@@ -3,7 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const connectDB = require('./config/db');
+const connectDB = require('./database/db');
 const initSocketIO = require('./socket');
 const { initOrderCleanupJob } = require('./jobs/cleanupOldOrders');
 const { initSubscriptionCronJob } = require('./jobs/subscriptionCron');
@@ -101,8 +101,12 @@ app.use(checkSubscriptionStatus);
 // API Routes (supports both /api/ prefix and fallback paths)
 app.use(['/api/auth/student', '/auth/student'], require('./routes/studentAuthRoutes'));
 app.use(['/api/auth/admin', '/auth/admin'], require('./routes/adminAuthRoutes'));
+app.use(['/api/owner', '/owner'], require('./routes/ownerRoutes'));
 app.use(['/api/menu', '/menu', '/api/admin/menu-items', '/admin/menu-items'], apiLimiter, require('./routes/menuRoutes'));
 app.use(['/api/orders', '/orders', '/api/admin/orders', '/admin/orders', '/api/admin/income', '/admin/income'], apiLimiter, require('./routes/orderRoutes'));
+
+// Developer Panel endpoints
+app.use('/api/developer', require('./developer/routes/devRoutes'));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

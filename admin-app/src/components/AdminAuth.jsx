@@ -72,22 +72,24 @@ export default function AdminAuth() {
     }
   };
 
+  const isOwnerPath = typeof window !== 'undefined' && window.location.pathname === '/owner';
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4 select-none">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border border-slate-200">
+      <div className={`w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border ${isOwnerPath ? 'border-amber-500/40 border-2' : 'border-slate-200'}`}>
         
         {/* Header */}
         <div className="text-center mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-700 font-black text-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
-            👨‍🍳
+          <div className={`w-14 h-14 rounded-2xl font-black text-2xl flex items-center justify-center mx-auto mb-3 shadow-inner ${isOwnerPath ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
+            {isOwnerPath ? '🛠️' : '👨‍🍳'}
           </div>
 
           <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-            {setupToken ? 'Set Staff Password' : 'Canteen Admin Login'}
+            {setupToken ? 'Set Staff Password' : (isOwnerPath ? 'Developer Panel Login' : 'Canteen Admin Login')}
           </h2>
 
           <p className="text-xs text-slate-500 font-semibold mt-1">
-            {setupToken ? 'Set your password to activate your staff account' : 'Authorized canteen personnel only'}
+            {setupToken ? 'Set your password to activate your staff account' : (isOwnerPath ? 'Developer / Owner account only — Handle with Care' : 'Authorized canteen personnel only')}
           </p>
         </div>
 
@@ -176,10 +178,10 @@ export default function AdminAuth() {
                 <input
                   type="text"
                   required
-                  placeholder="admin@mess.com or staff_user"
+                  placeholder={isOwnerPath ? "owner@mess.com or developer_username" : "admin@mess.com or staff_user"}
                   value={usernameOrEmail}
                   onChange={(e) => setUsernameOrEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-2xl text-sm focus:ring-2 focus:ring-emerald-600 outline-none font-medium"
+                  className={`w-full pl-10 pr-4 py-3 border border-slate-300 rounded-2xl text-sm focus:ring-2 outline-none font-medium ${isOwnerPath ? 'focus:ring-amber-500' : 'focus:ring-emerald-600'}`}
                 />
               </div>
             </div>
@@ -194,7 +196,7 @@ export default function AdminAuth() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-11 py-3 border border-slate-300 rounded-2xl text-sm focus:ring-2 focus:ring-emerald-600 outline-none font-medium"
+                  className={`w-full pl-10 pr-11 py-3 border border-slate-300 rounded-2xl text-sm focus:ring-2 outline-none font-medium ${isOwnerPath ? 'focus:ring-amber-500' : 'focus:ring-emerald-600'}`}
                 />
                 <button
                   type="button"
@@ -210,9 +212,13 @@ export default function AdminAuth() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl text-sm shadow-md transition-all flex items-center justify-center gap-2"
+              className={`w-full py-3.5 text-white font-extrabold rounded-2xl text-sm shadow-md transition-all flex items-center justify-center gap-2 ${
+                isOwnerPath
+                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-900/10'
+                  : 'bg-emerald-600 hover:bg-emerald-700'
+              }`}
             >
-              {loading ? 'Authenticating...' : 'Sign In to Canteen Control'}
+              {loading ? 'Authenticating...' : (isOwnerPath ? 'Sign In to Developer Panel' : 'Sign In to Canteen Control')}
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
