@@ -5,7 +5,7 @@ const envApiUrl = import.meta.env.VITE_API_URL;
 
 const rawApiUrl = isLocalhost
   ? (envApiUrl && (envApiUrl.includes('localhost') || envApiUrl.includes('127.0.0.1')) ? envApiUrl : 'http://localhost:5000/api')
-  : (envApiUrl || 'https://messmgmt-1.onrender.com/api');
+  : (envApiUrl && !envApiUrl.includes('localhost') && !envApiUrl.includes('127.0.0.1') ? envApiUrl : 'https://messmgmt-1.onrender.com/api');
 
 const cleanApiUrl = rawApiUrl.replace(/\/+$/, '');
 const API_BASE_URL = cleanApiUrl.endsWith('/api') ? cleanApiUrl : `${cleanApiUrl}/api`;
