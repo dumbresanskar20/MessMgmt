@@ -114,12 +114,10 @@ const registerStudent = async (req, res) => {
       });
     }
 
-    // Send OTP email and await resolution
-    try {
-      await sendOTP(cleanEmail, otpCode);
-    } catch (err) {
+    // Send OTP email in the background to prevent response blocking/timeouts
+    sendOTP(cleanEmail, otpCode).catch((err) => {
       console.warn('[Signup] Background OTP send warning:', err.message);
-    }
+    });
 
     return res.status(201).json({
       success: true,
@@ -234,11 +232,10 @@ const resendOTP = async (req, res) => {
       },
     });
 
-    try {
-      await sendOTP(cleanEmail, otpCode);
-    } catch (err) {
+    // Send OTP email in the background to prevent response blocking/timeouts
+    sendOTP(cleanEmail, otpCode).catch((err) => {
       console.warn('[ResendOTP] Background OTP send warning:', err.message);
-    }
+    });
 
     return res.status(200).json({
       success: true,
@@ -313,11 +310,10 @@ const loginStudent = async (req, res) => {
         },
       });
 
-      try {
-        await sendOTP(cleanEmail, otpCode);
-      } catch (err) {
+      // Send OTP email in the background to prevent response blocking/timeouts
+      sendOTP(cleanEmail, otpCode).catch((err) => {
         console.warn('[Login OTP] Background OTP send warning:', err.message);
-      }
+      });
 
       return res.status(401).json({
         success: false,
@@ -380,7 +376,10 @@ const forgotPassword = async (req, res) => {
 
       const studentAppUrl = (process.env.FRONTEND_STUDENT_URL || 'https://mess-mgmt.vercel.app').replace(/\/+$/, '');
       const resetLink = `${studentAppUrl}/?reset_token=${resetToken}`;
-      await sendStudentPasswordReset(cleanEmail, resetLink);
+      // Send reset email in the background to prevent response blocking/timeouts
+      sendStudentPasswordReset(cleanEmail, resetLink).catch((err) => {
+        console.warn('[Forgot Password] Background email send warning:', err.message);
+      });
     }
 
     // Always respond generically to prevent email enumeration

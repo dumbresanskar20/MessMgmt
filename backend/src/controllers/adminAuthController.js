@@ -136,7 +136,10 @@ const createStaffAccount = async (req, res) => {
     const adminAppUrl = (process.env.FRONTEND_ADMIN_URL || 'http://localhost:5174').replace(/\/+$/, '');
     const inviteLink = `${adminAppUrl}/set-password?token=${verificationToken}`;
 
-    await sendAdminInvitation(cleanEmail, cleanUsername, inviteLink);
+    // Send invitation email in the background to prevent response blocking/timeouts
+    sendAdminInvitation(cleanEmail, cleanUsername, inviteLink).catch((err) => {
+      console.warn('[Admin Invite] Email send warning:', err.message);
+    });
 
     return res.status(201).json({
       success: true,
