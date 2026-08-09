@@ -165,10 +165,25 @@ export default function KitchenScreen() {
       setOrderCounts(previousCounts);
       alert('Failed to update status. Please check your network connection.');
     }
-  };
-
-
-
+  };  // Listen to print window completion to show the manual confirmation modal
+  useEffect(() => {
+    const handlePrintMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data && event.data.type === 'SHOW_PRINT_CONFIRMATION') {
+        const orderId = event.data.orderId;
+        if (orderId) {
+          const targetOrder = orders.find((o) => o._id === orderId || o.id === orderId);
+          if (targetOrder) {
+            setPrintVerifyOrder(targetOrder);
+          }
+        }
+      }
+    };
+    window.addEventListener('message', handlePrintMessage);
+    return () => {
+      window.removeEventListener('message', handlePrintMessage);
+    };
+  }, [orders]);
   const printReceipt = (order) => {
     const studentName = order.student_id?.name || order.student_name || 'Student';
     const mealType = order.meal_type.toUpperCase();
@@ -237,8 +252,13 @@ export default function KitchenScreen() {
           <script>
             window.onload = function() {
               window.print();
+            };
+            window.onafterprint = function() {
+              if (window.opener && !window.opener.closed) {
+                window.opener.postMessage({ type: 'SHOW_PRINT_CONFIRMATION', orderId: '${order._id || order.id}' }, window.location.origin);
+              }
               window.close();
-            }
+            };
           </script>
         </body>
       </html>
@@ -248,7 +268,6 @@ export default function KitchenScreen() {
 
   const handlePrintAndDeliver = (order) => {
     printReceipt(order);
-    setPrintVerifyOrder(order);
   };
 
   // Filter active tokens (exclude delivered / cancelled)
