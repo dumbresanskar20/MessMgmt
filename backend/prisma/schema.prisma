@@ -101,6 +101,7 @@ model AdminUser {
 
   creator      AdminUser?  @relation("AdminCreatedBy", fields: [created_by_id], references: [id])
   created_staff AdminUser[] @relation("AdminCreatedBy")
+  inventory_logs InventoryLog[]
 
   @@map("AdminUser")
 }
@@ -117,6 +118,7 @@ model MenuItem {
   created_at           DateTime @default(now())
 
   order_items OrderItem[]
+  recipe_items RecipeItem[]
 
   @@index([meal_type, is_active])
   @@map("MenuItem")
@@ -152,6 +154,7 @@ model Order {
 
   student Student     @relation(fields: [student_id], references: [id])
   items   OrderItem[]
+  inventory_logs InventoryLog[]
 
   @@index([student_id, date])
   @@index([date, meal_type, payment_status])
@@ -232,5 +235,68 @@ model AuditLog {
   created_at DateTime @default(now())
 
   @@map("AuditLog")
+}
+
+enum InventoryUnit {
+  kg
+  g
+  litre
+  ml
+  piece
+  packet
+}
+
+model InventoryItem {
+  id                  Int            @id @default(autoincrement())
+  unique_inventory_id String         @unique
+  name                String
+  unit                InventoryUnit
+  quantity_in_stock   Decimal        @db.Decimal(10, 3)
+  low_stock_threshold Decimal        @db.Decimal(10, 3)
+  is_active           Boolean        @default(true)
+  created_at          DateTime       @default(now())
+  updated_at          DateTime       @updatedAt
+
+  recipe_items        RecipeItem[]
+  inventory_logs      InventoryLog[]
+
+  @@map("InventoryItem")
+}
+
+model RecipeItem {
+  id                Int           @id @default(autoincrement())
+  menu_item_id      Int
+  inventory_item_id Int
+  quantity_required Decimal       @db.Decimal(10, 3)
+  quantity_unit     InventoryUnit @default(kg)
+
+  menu_item         MenuItem      @relation(fields: [menu_item_id], references: [id], onDelete: Cascade)
+  inventory_item    InventoryItem @relation(fields: [inventory_item_id], references: [id], onDelete: Cascade)
+
+  @@unique([menu_item_id, inventory_item_id])
+  @@map("RecipeItem")
+}
+
+model InventoryLog {
+  id                Int           @id @default(autoincrement())
+  inventory_item_id Int
+  action_type       String        // "restock", "deduction", etc.
+  quantity_changed  Decimal       @db.Decimal(10, 3)
+  admin_user_id     Int?
+  order_id          Int?
+  created_at        DateTime      @default(now())
+
+  inventory_item    InventoryItem @relation(fields: [inventory_item_id], references: [id], onDelete: Cascade)
+  admin_user        AdminUser?    @relation(fields: [admin_user_id], references: [id], onDelete: SetNull)
+  order             Order?        @relation(fields: [order_id], references: [id], onDelete: SetNull)
+
+  @@map("InventoryLog")
+}
+
+model InventoryCounter {
+  id         Int @id @default(autoincrement())
+  last_value Int @default(0)
+
+  @@map("InventoryCounter")
 }
 

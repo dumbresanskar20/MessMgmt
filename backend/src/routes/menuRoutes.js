@@ -7,6 +7,7 @@ const {
   deleteMenuItem,
   getMealWindows,
   updateMealWindow,
+  getMenuItemRecipe,
 } = require('../controllers/menuController');
 const { verifyAdmin } = require('../middleware/authMiddleware');
 const { handleImageUpload } = require('../middleware/upload');
@@ -26,6 +27,8 @@ router.put('/admin/menu-items/:id', verifyAdmin, handleImageUpload('image'), upd
 router.patch('/admin/menu-items/:id', verifyAdmin, handleImageUpload('image'), updateMenuItem);
 router.delete('/items/:id', verifyAdmin, deleteMenuItem);
 router.delete('/admin/menu-items/:id', verifyAdmin, deleteMenuItem);
+router.get('/items/:id/recipe', verifyAdmin, getMenuItemRecipe);
+router.get('/admin/menu-items/:id/recipe', verifyAdmin, getMenuItemRecipe);
 
 // Admin-only endpoint for meal timings
 router.put('/windows/:meal_type', verifyAdmin, updateMealWindow);

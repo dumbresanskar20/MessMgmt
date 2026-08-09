@@ -57,6 +57,53 @@ const sendEmail = async ({ to, subject, html, text }) => {
   return { success: true, mock: true };
 };
 
+const sendViaBrevo = async (to, subject, html, text) => {
+  const BREVO_API_KEY = process.env.BREVO_API_KEY;
+  if (!BREVO_API_KEY) {
+    console.warn('[Brevo Service] BREVO_API_KEY is not defined in environment variables! Logging OTP email instead.');
+    return null;
+  }
+
+  try {
+    let senderEmail = 'dumbresanskar06@gmail.com';
+    const envFrom = process.env.EMAIL_FROM;
+    if (envFrom) {
+      const match = envFrom.match(/<([^>]+)>/);
+      if (match && match[1]) {
+        senderEmail = match[1].trim();
+      } else {
+        senderEmail = envFrom.trim();
+      }
+    }
+
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': BREVO_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: 'Mess Management System', email: senderEmail },
+        to: [{ email: to }],
+        subject: subject,
+        htmlContent: html,
+        textContent: text || html.replace(/<[^>]*>?/gm, ''),
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to send transactional email');
+    }
+
+    console.log('[Brevo Service] Email sent successfully via Brevo API:', data);
+    return { success: true, messageId: data.messageId };
+  } catch (error) {
+    console.error('[Brevo Service] Error sending email via Brevo:', error.message);
+    throw error;
+  }
+};
+
 const sendOTP = async (email, otpCode) => {
   const subject = 'Your Mess Management Verification Code';
   const html = `
@@ -72,6 +119,17 @@ const sendOTP = async (email, otpCode) => {
       <p style="font-size: 12px; color: #777;">Campus Mess Management Team</p>
     </div>
   `;
+
+  const BREVO_API_KEY = process.env.BREVO_API_KEY;
+  if (BREVO_API_KEY) {
+    try {
+      const res = await sendViaBrevo(email, subject, html, `Your OTP is ${otpCode}. It expires in 10 minutes.`);
+      if (res && res.success) return res;
+    } catch (err) {
+      console.warn('[Brevo OTP] Failed to send via Brevo REST API, trying standard SMTP fallback...');
+    }
+  }
+
   return await sendEmail({ to: email, subject, html, text: `Your OTP is ${otpCode}. It expires in 10 minutes.` });
 };
 
@@ -114,9 +172,41 @@ const sendStudentPasswordReset = async (email, resetLink) => {
   return await sendEmail({ to: email, subject, html });
 };
 
+const sendForgotPasswordOTP = async (email, otpCode) => {
+  const subject = 'Your Mess Management Password Reset Code';
+  const html = `
+    <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: #ea580c; margin-bottom: 10px;">🍱 Password Reset OTP</h2>
+      <p>Hello,</p>
+      <p>We received a request to reset the password for your student mess account.</p>
+      <p>Please use the verification OTP code below to reset your password:</p>
+      <div style="background-color: #fff3e0; padding: 15px; border-radius: 6px; text-align: center; margin: 20px 0;">
+        <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #ea580c;">${otpCode}</span>
+      </div>
+      <p>This code will expire in <strong>10 minutes</strong>. If you did not request this, you can safely ignore this email.</p>
+      <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+      <p style="font-size: 12px; color: #777;">Campus Mess Management Team</p>
+    </div>
+  `;
+
+  const BREVO_API_KEY = process.env.BREVO_API_KEY;
+  if (BREVO_API_KEY) {
+    try {
+      const res = await sendViaBrevo(email, subject, html, `Your password reset OTP is ${otpCode}. It expires in 10 minutes.`);
+      if (res && res.success) return res;
+    } catch (err) {
+      console.warn('[Brevo Forgot Password OTP] Failed to send via Brevo REST API, trying standard SMTP fallback...', err.message);
+    }
+  }
+
+  return await sendEmail({ to: email, subject, html, text: `Your password reset OTP is ${otpCode}. It expires in 10 minutes.` });
+};
+
 module.exports = {
   generateOTP,
   sendOTP,
   sendAdminInvitation,
   sendStudentPasswordReset,
+  sendForgotPasswordOTP,
 };
+

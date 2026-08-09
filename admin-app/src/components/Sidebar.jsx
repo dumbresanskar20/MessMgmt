@@ -1,21 +1,23 @@
 import React, { useState } from 'react';
-import { LayoutGrid, UtensilsCrossed, Clock, Users, LogOut, History, Menu, X } from 'lucide-react';
+import { LayoutGrid, UtensilsCrossed, Clock, Users, LogOut, History, Menu, X, Package } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
 export default function Sidebar({ activeTab, setActiveTab }) {
   const { admin, isSuperAdmin, logout } = useAdminAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const navItems = [
-    { id: 'kitchen', label: 'Kitchen Screen', icon: LayoutGrid, highlight: true },
-    { id: 'history', label: 'Order History', icon: History },
-    { id: 'menu', label: 'Menu Management', icon: UtensilsCrossed },
-    { id: 'timings', label: 'Meal Timings', icon: Clock },
-  ];
-
-  if (isSuperAdmin) {
-    navItems.push({ id: 'staff', label: 'Manage Staff', icon: Users });
-  }
+  const navItems = isSuperAdmin
+    ? [
+        { id: 'kitchen', label: 'Order Fulfillment', icon: LayoutGrid, highlight: true },
+        { id: 'history', label: 'Order History', icon: History },
+        { id: 'menu', label: 'Menu Management', icon: UtensilsCrossed },
+        { id: 'inventory', label: 'Total Inventory', icon: Package },
+        { id: 'timings', label: 'Meal Timings', icon: Clock },
+        { id: 'staff', label: 'Manage Staff', icon: Users },
+      ]
+    : [
+        { id: 'kitchen', label: 'Kitchen Screen', icon: LayoutGrid, highlight: true },
+      ];
 
   const handleNavClick = (id) => {
     setActiveTab(id);
@@ -77,7 +79,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
                 <h1 className="font-extrabold text-lg text-white tracking-tight leading-none">
                   Canteen<span className="text-emerald-400">Admin</span>
                 </h1>
-                <span className="text-[11px] text-slate-400 font-medium">Mess Kitchen Operations</span>
+                <span className="text-[11px] text-slate-400 font-medium">Order Fulfillment & Stocks</span>
               </div>
             </div>
 

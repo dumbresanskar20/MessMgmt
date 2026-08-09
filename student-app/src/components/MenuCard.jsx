@@ -29,8 +29,10 @@ export default function MenuCard({ item, isCurrentlyOpen = true }) {
     setTransformStyle('perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)');
   };
 
+  const isInStock = item.is_in_stock !== false;
+
   const handleAdd = () => {
-    if (!isCurrentlyOpen) return;
+    if (!isCurrentlyOpen || !isInStock) return;
     addToCart(item);
     setAdded(true);
     setTimeout(() => setAdded(false), 1200);
@@ -45,6 +47,8 @@ export default function MenuCard({ item, isCurrentlyOpen = true }) {
       className={`group relative bg-white rounded-3xl overflow-hidden border transition-all flex flex-col justify-between ${
         !isCurrentlyOpen
           ? 'border-stone-200/80 bg-stone-50/40 opacity-90'
+          : !isInStock
+          ? 'border-stone-200/80 bg-stone-50/40 opacity-70 grayscale-50'
           : 'border-amber-100/80 shadow-warm hover:shadow-cardHover'
       }`}
     >
@@ -54,7 +58,7 @@ export default function MenuCard({ item, isCurrentlyOpen = true }) {
           src={item.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80'}
           alt={item.name}
           className={`w-full h-full object-cover transition-transform duration-500 ${
-            isCurrentlyOpen ? 'group-hover:scale-110' : 'grayscale-25'
+            isCurrentlyOpen && isInStock ? 'group-hover:scale-110' : 'grayscale-25'
           }`}
           loading="lazy"
         />
@@ -86,7 +90,11 @@ export default function MenuCard({ item, isCurrentlyOpen = true }) {
 
         {/* Add to Cart CTA */}
         <div className="mt-5 pt-3 border-t border-stone-100 flex items-center justify-between">
-          {isCurrentlyOpen ? (
+          {!isInStock ? (
+            <span className="text-xs font-semibold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg">
+              Sold Out
+            </span>
+          ) : isCurrentlyOpen ? (
             <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg">
               Fresh & Ready
             </span>
@@ -99,9 +107,9 @@ export default function MenuCard({ item, isCurrentlyOpen = true }) {
 
           <button
             onClick={handleAdd}
-            disabled={!isCurrentlyOpen || added}
+            disabled={!isCurrentlyOpen || !isInStock || added}
             className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl font-bold text-xs transition-all duration-200 shadow-sm ${
-              !isCurrentlyOpen
+              !isCurrentlyOpen || !isInStock
                 ? 'bg-stone-200 text-stone-500 cursor-not-allowed border border-stone-300/60'
                 : added
                 ? 'bg-emerald-600 text-white scale-105'
@@ -112,6 +120,10 @@ export default function MenuCard({ item, isCurrentlyOpen = true }) {
               <>
                 <Clock className="w-4 h-4 text-stone-400" />
                 <span>Ordering Closed</span>
+              </>
+            ) : !isInStock ? (
+              <>
+                <span>Out of Stock</span>
               </>
             ) : added ? (
               <>

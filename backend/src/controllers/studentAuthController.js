@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { z } = require('zod');
 const prisma = require('../database/prisma');
-const { generateOTP, sendOTP, sendStudentPasswordReset } = require('../services/otpService');
+const { generateOTP, sendOTP, sendForgotPasswordOTP } = require('../services/otpService');
 
 // Zod schemas for input validation
 const signupSchema = z.object({
@@ -83,8 +83,6 @@ const registerStudent = async (req, res) => {
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    const otpCode = generateOTP();
-    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     let student;
     if (unverifiedTarget) {
@@ -95,9 +93,9 @@ const registerStudent = async (req, res) => {
           email: cleanEmail,
           roll_no: cleanRollNo,
           password_hash: hashedPassword,
-          is_verified: false,
-          otp_code: otpCode,
-          otp_expires_at: otpExpiresAt,
+          is_verified: true,
+          otp_code: null,
+          otp_expires_at: null,
         },
       });
     } else {
@@ -107,21 +105,14 @@ const registerStudent = async (req, res) => {
           email: cleanEmail,
           roll_no: cleanRollNo,
           password_hash: hashedPassword,
-          is_verified: false,
-          otp_code: otpCode,
-          otp_expires_at: otpExpiresAt,
+          is_verified: true,
         },
       });
     }
 
-    // Send OTP email in the background to prevent response blocking/timeouts
-    sendOTP(cleanEmail, otpCode).catch((err) => {
-      console.warn('[Signup] Background OTP send warning:', err.message);
-    });
-
     return res.status(201).json({
       success: true,
-      message: `A verification OTP code has been sent to ${cleanEmail}.`,
+      message: 'Account created successfully! Please log in with your credentials.',
       email: cleanEmail,
     });
   } catch (error) {
@@ -366,26 +357,29 @@ const forgotPassword = async (req, res) => {
     });
 
     if (student) {
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const resetExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from now
+      const otpCode = generateOTP();
+      const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
       await prisma.student.update({
         where: { id: student.id },
-        data: { reset_token: resetToken, reset_token_expires: resetExpires },
+        data: {
+          otp_code: otpCode,
+          otp_expires_at: otpExpiresAt,
+          reset_token: null,
+          reset_token_expires: null,
+        },
       });
 
-      const studentAppUrl = (process.env.FRONTEND_STUDENT_URL || 'https://mess-mgmt.vercel.app').replace(/\/+$/, '');
-      const resetLink = `${studentAppUrl}/?reset_token=${resetToken}`;
-      // Send reset email in the background to prevent response blocking/timeouts
-      sendStudentPasswordReset(cleanEmail, resetLink).catch((err) => {
-        console.warn('[Forgot Password] Background email send warning:', err.message);
+      // Send reset OTP in the background to prevent response blocking/timeouts
+      sendForgotPasswordOTP(cleanEmail, otpCode).catch((err) => {
+        console.warn('[Forgot Password] Background OTP send warning:', err.message);
       });
     }
 
     // Always respond generically to prevent email enumeration
     return res.status(200).json({
       success: true,
-      message: 'If an account exists with this email, a reset link has been sent.',
+      message: 'If an account exists with this email, a verification OTP code has been sent.',
     });
   } catch (error) {
     console.error('Forgot password error:', error);
@@ -396,27 +390,43 @@ const forgotPassword = async (req, res) => {
 // Reset Password Controller
 const resetPassword = async (req, res) => {
   try {
-    const { token, password } = req.body;
+    const { email, otp_code, password } = req.body;
 
-    if (!token || typeof token !== 'string') {
-      return res.status(400).json({ success: false, message: 'Invalid or missing password reset token.' });
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ success: false, message: 'Invalid or missing email address.' });
+    }
+
+    if (!otp_code || typeof otp_code !== 'string' || otp_code.trim().length !== 6) {
+      return res.status(400).json({ success: false, message: 'Invalid or missing 6-digit OTP code.' });
     }
 
     if (!password || password.length < 6) {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
     }
 
-    const student = await prisma.student.findFirst({
-      where: {
-        reset_token: token.trim(),
-        reset_token_expires: { gt: new Date() },
-      },
+    const cleanEmail = email.toLowerCase().trim();
+    const student = await prisma.student.findUnique({
+      where: { email: cleanEmail },
     });
 
     if (!student) {
       return res.status(400).json({
         success: false,
-        message: 'This reset link has expired or is invalid — please request a new one.',
+        message: 'No student account found with this email.',
+      });
+    }
+
+    if (!student.otp_code || student.otp_code !== otp_code.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification code.',
+      });
+    }
+
+    if (!student.otp_expires_at || student.otp_expires_at < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Verification code has expired — please request a new one.',
       });
     }
 
@@ -427,6 +437,8 @@ const resetPassword = async (req, res) => {
       where: { id: student.id },
       data: {
         password_hash: hashedPassword,
+        otp_code: null,
+        otp_expires_at: null,
         reset_token: null,
         reset_token_expires: null,
         failed_login_attempts: 0,

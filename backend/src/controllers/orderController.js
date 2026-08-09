@@ -10,7 +10,7 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const prisma = require('../database/prisma');
 const { generateTokenNumber } = require('../services/tokenGenerator');
-const { computeMealStatus } = require('./menuController');
+const { computeMealStatus, convertToInventoryBaseUnit } = require('./menuController');
 
 // Initialize Razorpay SDK instance safely
 const getRazorpayInstance = () => {
@@ -176,6 +176,83 @@ const createRazorpayOrder = async (req, res) => {
         })),
       });
 
+      // 1. Gather all required ingredients
+      const inventoryDeductions = {};
+
+      for (const item of validatedItems) {
+        if (!item.menu_item_id) continue;
+
+        const recipeItems = await tx.recipeItem.findMany({
+          where: { menu_item_id: item.menu_item_id },
+          include: { inventory_item: true },
+        });
+
+        for (const ri of recipeItems) {
+          const convertedRequired = convertToInventoryBaseUnit(
+            ri.quantity_required,
+            ri.quantity_unit || ri.inventory_item.unit,
+            ri.inventory_item.unit
+          );
+          const needed = convertedRequired * item.quantity;
+          const itemId = ri.inventory_item_id;
+          if (!inventoryDeductions[itemId]) {
+            inventoryDeductions[itemId] = {
+              needed: 0,
+              name: ri.inventory_item.name,
+              unit: ri.inventory_item.unit,
+            };
+          }
+          inventoryDeductions[itemId].needed += needed;
+        }
+      }
+
+      // 2. Lock and check inventory levels in sorted order to avoid deadlock
+      const sortedItemIds = Object.keys(inventoryDeductions).map(Number).sort((a, b) => a - b);
+
+      for (const itemId of sortedItemIds) {
+        const { needed, name } = inventoryDeductions[itemId];
+
+        // Perform SELECT FOR UPDATE to block concurrency races
+        const [invItem] = await tx.$queryRaw`
+          SELECT id, name, quantity_in_stock, is_active FROM InventoryItem WHERE id = ${itemId} FOR UPDATE
+        `;
+
+        if (!invItem) {
+          throw new Error(`Inventory item '${name}' not found.`);
+        }
+
+        if (!invItem.is_active) {
+          const err = new Error(`Sorry, ingredient '${name}' is currently unavailable.`);
+          err.isInventoryError = true;
+          throw err;
+        }
+
+        const currentStock = Number(invItem.quantity_in_stock);
+        if (currentStock < needed) {
+          const err = new Error(`Sorry, ${name} is temporarily unavailable due to low stock`);
+          err.isInventoryError = true;
+          throw err;
+        }
+
+        const newStock = currentStock - needed;
+
+        // Perform update
+        await tx.inventoryItem.update({
+          where: { id: itemId },
+          data: { quantity_in_stock: newStock },
+        });
+
+        // Write to InventoryLog
+        await tx.inventoryLog.create({
+          data: {
+            inventory_item_id: itemId,
+            action_type: 'deduction',
+            quantity_changed: -needed,
+            order_id: order.id,
+          },
+        });
+      }
+
       return order;
     });
 
@@ -190,6 +267,12 @@ const createRazorpayOrder = async (req, res) => {
       total_amount: calculatedTotal,
     });
   } catch (error) {
+    if (error.isInventoryError || error.message.startsWith('Sorry,')) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
     console.error('Create Razorpay order error:', error);
     return res.status(500).json({ success: false, message: `Failed to initiate payment order: ${error.message}` });
   }

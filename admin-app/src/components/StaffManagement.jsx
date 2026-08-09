@@ -13,6 +13,7 @@ export default function StaffManagement() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('staff');
+  const [password, setPassword] = useState('');
   
   const [createdInviteLink, setCreatedInviteLink] = useState('');
   const [copied, setCopied] = useState(false);
@@ -44,7 +45,7 @@ export default function StaffManagement() {
     setCreatedInviteLink('');
 
     try {
-      const res = await api.post('/auth/admin/staff', { username, email, role });
+      const res = await api.post('/auth/admin/staff', { username, email, role, password });
       if (res.data.success) {
         setSuccessMsg(res.data.message);
         setCreatedInviteLink(res.data.inviteLink);
@@ -106,6 +107,7 @@ export default function StaffManagement() {
           onClick={() => {
             setUsername('');
             setEmail('');
+            setPassword('');
             setRole('staff');
             setCreatedInviteLink('');
             setErrorMsg('');
@@ -273,6 +275,18 @@ export default function StaffManagement() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-600 outline-none font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Password (Optional)</label>
+                  <input
+                    type="password"
+                    placeholder="Leave blank to send email setup link"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-600 outline-none font-medium"
+                    minLength={6}
                   />
                 </div>
 

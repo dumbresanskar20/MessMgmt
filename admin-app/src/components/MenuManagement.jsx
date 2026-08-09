@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, X, Check, Image as ImageIcon, Upload, AlertCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Check, Image as ImageIcon, Upload, AlertCircle, Search, ChevronDown } from 'lucide-react';
 import api from '../services/api';
 
 export default function MenuManagement() {
@@ -22,11 +22,35 @@ export default function MenuManagement() {
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
 
+  // Recipe Configuration States
+  const [recipeItems, setRecipeItems] = useState([]);
+  const [allInventoryItems, setAllInventoryItems] = useState([]);
+
+  const getAvailableUnits = (baseUnit) => {
+    const clean = (baseUnit || '').toLowerCase();
+    if (clean === 'kg') return ['kg', 'g'];
+    if (clean === 'litre') return ['litre', 'ml'];
+    if (clean) return [clean];
+    return [];
+  };
+
   const [notification, setNotification] = useState(null);
 
   useEffect(() => {
     fetchMenuItems();
+    fetchInventoryItems();
   }, [filterMeal]);
+
+  const fetchInventoryItems = async () => {
+    try {
+      const res = await api.get('/inventory?limit=1000&is_active=true');
+      if (res.data.success) {
+        setAllInventoryItems(res.data.items || []);
+      }
+    } catch (err) {
+      console.error('Error loading active inventory items:', err);
+    }
+  };
 
   const showToast = (text, type = 'success') => {
     setNotification({ text, type });
@@ -59,6 +83,7 @@ export default function MenuManagement() {
     setImagePreview('');
     setDescription('');
     setIsActive(true);
+    setRecipeItems([]);
     setIsModalOpen(true);
   };
 
@@ -72,6 +97,26 @@ export default function MenuManagement() {
     setImagePreview(item.image_url || '');
     setDescription(item.description || '');
     setIsActive(item.is_active);
+    
+    // Fetch recipe
+    setRecipeItems([]);
+    const itemId = item.id || item._id;
+    api.get(`/menu/items/${itemId}/recipe`)
+      .then((res) => {
+        if (res.data.success && res.data.recipe) {
+          setRecipeItems(
+            res.data.recipe.map((r) => ({
+              inventory_item_id: r.inventory_item_id.toString(),
+              quantity_required: r.quantity_required.toString(),
+              quantity_unit: r.quantity_unit || (r.inventory_item ? r.inventory_item.unit : 'kg'),
+            }))
+          );
+        }
+      })
+      .catch((err) => {
+        console.error('Error fetching menu item recipe:', err);
+      });
+
     setIsModalOpen(true);
   };
 
@@ -103,6 +148,19 @@ export default function MenuManagement() {
       formData.append('meal_type', mealType);
       formData.append('description', description);
       formData.append('is_active', isActive);
+
+      // Filter out incomplete recipe items and map types correctly
+      const validRecipe = recipeItems
+        .filter((r) => r.inventory_item_id && r.quantity_required && Number(r.quantity_required) > 0)
+        .map((r) => {
+          const inv = allInventoryItems.find(i => i.id.toString() === r.inventory_item_id.toString());
+          return {
+            inventory_item_id: parseInt(r.inventory_item_id, 10),
+            quantity_required: parseFloat(r.quantity_required),
+            quantity_unit: r.quantity_unit || (inv ? inv.unit : 'kg'),
+          };
+        });
+      formData.append('recipe', JSON.stringify(validRecipe));
 
       if (imageFile) {
         formData.append('image', imageFile);
@@ -307,7 +365,7 @@ export default function MenuManagement() {
       {/* Add / Edit Item Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
               <h3 className="text-xl font-bold text-slate-900">
                 {editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}
@@ -410,6 +468,129 @@ export default function MenuManagement() {
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-600 outline-none font-medium"
                 />
+              </div>
+
+              {/* Recipe Ingredients Section */}
+              <div className="border-t border-slate-100 pt-4 space-y-3">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                  <label className="block text-xs font-bold text-slate-700">Recipe Ingredients (Auto-Deductions)</label>
+                  <button
+                    type="button"
+                    onClick={() => setRecipeItems([...recipeItems, { inventory_item_id: '', quantity_required: '', quantity_unit: '' }])}
+                    className="text-[10px] bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-extrabold px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Ingredient</span>
+                  </button>
+                </div>
+
+                {recipeItems.length === 0 ? (
+                  <p className="text-[10px] text-slate-400 font-medium">No recipe defined. This item won't auto-deduct stock.</p>
+                ) : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {recipeItems.map((r, idx) => {
+                      const selectedInv = allInventoryItems.find(i => i.id.toString() === r.inventory_item_id.toString());
+                      const selectedIdsInOtherRows = recipeItems
+                        .filter((_, i) => i !== idx)
+                        .map((row) => row.inventory_item_id.toString());
+
+                      return (
+                        <div key={idx} className="flex gap-2 items-center">
+                          <div className="flex-1 relative">
+                            <input
+                              list={`ingredients-list-${idx}`}
+                              value={
+                                selectedInv 
+                                  ? `${selectedInv.name} (${selectedInv.unique_inventory_id})` 
+                                  : (r.inputValue || '')
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const updated = [...recipeItems];
+                                updated[idx].inputValue = val;
+
+                                const match = allInventoryItems.find(item => 
+                                  `${item.name} (${item.unique_inventory_id})` === val
+                                );
+
+                                if (match) {
+                                  updated[idx].inventory_item_id = match.id.toString();
+                                  updated[idx].quantity_unit = match.unit;
+                                  delete updated[idx].inputValue; // Selection complete, remove typed buffer
+                                } else if (val === '') {
+                                  updated[idx].inventory_item_id = '';
+                                  updated[idx].quantity_unit = '';
+                                }
+                                setRecipeItems(updated);
+                              }}
+                              placeholder="Select ingredient..."
+                              className="w-full pl-2.5 pr-8 py-2 border border-slate-300 rounded-xl text-xs outline-none font-semibold focus:ring-1 focus:ring-emerald-500 bg-white"
+                              required
+                            />
+                            <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none">
+                              <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                            </div>
+                            <datalist id={`ingredients-list-${idx}`}>
+                              {allInventoryItems.map((item) => {
+                                const isAlreadySelected = selectedIdsInOtherRows.includes(item.id.toString());
+                                if (isAlreadySelected) return null;
+                                return (
+                                  <option key={item.id} value={`${item.name} (${item.unique_inventory_id})`} />
+                                );
+                              })}
+                            </datalist>
+                          </div>
+
+                          <select
+                            value={r.quantity_unit || (selectedInv ? selectedInv.unit : '')}
+                            onChange={(e) => {
+                              const updated = [...recipeItems];
+                              updated[idx].quantity_unit = e.target.value;
+                              setRecipeItems(updated);
+                            }}
+                            className="w-24 px-2 py-2 border border-slate-300 rounded-xl text-xs outline-none bg-white text-slate-700 font-semibold focus:ring-1 focus:ring-emerald-500"
+                            required
+                            disabled={!selectedInv}
+                          >
+                            <option value="">Unit</option>
+                            {selectedInv && getAvailableUnits(selectedInv.unit).map((u) => (
+                              <option key={u} value={u}>
+                                {u}
+                              </option>
+                            ))}
+                          </select>
+
+                          <div className="relative w-24">
+                            <input
+                              type="number"
+                              step="0.001"
+                              placeholder="Qty"
+                              value={r.quantity_required}
+                              onChange={(e) => {
+                                const updated = [...recipeItems];
+                                updated[idx].quantity_required = e.target.value;
+                                setRecipeItems(updated);
+                              }}
+                              className="w-full px-2.5 py-2 border border-slate-300 rounded-xl text-xs outline-none font-semibold"
+                              required
+                              min="0.001"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRecipeItems(recipeItems.filter((_, i) => i !== idx));
+                            }}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2 pt-1">

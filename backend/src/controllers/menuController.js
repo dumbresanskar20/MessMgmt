@@ -48,6 +48,46 @@ const computeMealStatus = (w, currentTime = getCurrentTimeHHMM()) => {
 // Helper: add _id alias to a Prisma record
 const withId = (record) => ({ ...record, _id: record.id });
 
+const convertToInventoryBaseUnit = (quantity, recipeUnit, inventoryUnit) => {
+  const q = Number(quantity);
+  const rUnit = String(recipeUnit).toLowerCase();
+  const iUnit = String(inventoryUnit).toLowerCase();
+
+  if (rUnit === iUnit) return q;
+
+  // kg vs g
+  if (rUnit === 'g' && iUnit === 'kg') return q / 1000;
+  if (rUnit === 'kg' && iUnit === 'g') return q * 1000;
+
+  // litre vs ml
+  if (rUnit === 'ml' && iUnit === 'litre') return q / 1000;
+  if (rUnit === 'litre' && iUnit === 'ml') return q * 1000;
+
+  return q;
+};
+
+const mapMenuItem = (record) => {
+  let isInStock = true;
+  if (record.recipe_items && record.recipe_items.length > 0) {
+    isInStock = record.recipe_items.every((ri) => {
+      if (!ri.inventory_item || !ri.inventory_item.is_active) return false;
+      const neededInBase = convertToInventoryBaseUnit(
+        ri.quantity_required,
+        ri.quantity_unit || ri.inventory_item.unit,
+        ri.inventory_item.unit
+      );
+      return Number(ri.inventory_item.quantity_in_stock) >= neededInBase;
+    });
+  }
+  return {
+    ...record,
+    _id: record.id,
+    price: Number(record.price),
+    is_in_stock: isInStock,
+    recipe_items: undefined,
+  };
+};
+
 // Get all menu items (Students & Admin)
 const getMenuItems = async (req, res) => {
   try {
@@ -86,13 +126,20 @@ const getMenuItems = async (req, res) => {
 
       const items = await prisma.menuItem.findMany({
         where,
+        include: {
+          recipe_items: {
+            include: {
+              inventory_item: true,
+            },
+          },
+        },
         orderBy: { created_at: 'desc' },
       });
 
       return res.status(200).json({
         success: true,
         count: items.length,
-        items: items.map(withId),
+        items: items.map(mapMenuItem),
         is_active: status.is_active,
         is_currently_open: status.is_currently_open,
         meal_window: status,
@@ -106,16 +153,24 @@ const getMenuItems = async (req, res) => {
 
       const items = await prisma.menuItem.findMany({
         where,
+        include: {
+          recipe_items: {
+            include: {
+              inventory_item: true,
+            },
+          },
+        },
         orderBy: { created_at: 'desc' },
       });
 
       return res.status(200).json({
         success: true,
         count: items.length,
-        items: items.map(withId),
+        items: items.map(mapMenuItem),
       });
     }
   } catch (error) {
+    console.error('Error fetching menu items:', error);
     return res.status(500).json({ success: false, message: 'Error fetching menu items.' });
   }
 };
@@ -123,7 +178,7 @@ const getMenuItems = async (req, res) => {
 // Create a new menu item (Admin)
 const createMenuItem = async (req, res) => {
   try {
-    const { name, image_url, meal_type, price, description, is_active } = req.body;
+    const { name, image_url, meal_type, price, description, is_active, recipe } = req.body;
 
     if (!name || price === undefined || !meal_type) {
       return res.status(400).json({ success: false, message: 'Name, price, and meal_type are required fields.' });
@@ -148,16 +203,40 @@ const createMenuItem = async (req, res) => {
       }
     }
 
-    const item = await prisma.menuItem.create({
-      data: {
-        name: name.trim(),
-        image_url: finalImageUrl,
-        cloudinary_public_id: cloudinaryPublicId,
-        meal_type: meal_type.toLowerCase(),
-        price: Number(price),
-        description: description || '',
-        is_active: parsedIsActive,
-      },
+    let recipeData = [];
+    if (recipe) {
+      try {
+        recipeData = JSON.parse(recipe);
+      } catch (err) {
+        console.error('Error parsing recipe JSON:', err);
+      }
+    }
+
+    const item = await prisma.$transaction(async (tx) => {
+      const menuItem = await tx.menuItem.create({
+        data: {
+          name: name.trim(),
+          image_url: finalImageUrl,
+          cloudinary_public_id: cloudinaryPublicId,
+          meal_type: meal_type.toLowerCase(),
+          price: Number(price),
+          description: description || '',
+          is_active: parsedIsActive,
+        },
+      });
+
+      if (recipeData.length > 0) {
+        await tx.recipeItem.createMany({
+          data: recipeData.map((r) => ({
+            menu_item_id: menuItem.id,
+            inventory_item_id: Number(r.inventory_item_id),
+            quantity_required: Number(r.quantity_required),
+            quantity_unit: r.quantity_unit,
+          })),
+        });
+      }
+
+      return menuItem;
     });
 
     return res.status(201).json({
@@ -209,13 +288,45 @@ const updateMenuItem = async (req, res) => {
       updates.cloudinary_public_id = newPublicId;
     }
 
+    let recipeData = [];
+    const hasRecipe = updates.recipe !== undefined;
+    if (hasRecipe) {
+      try {
+        recipeData = JSON.parse(updates.recipe);
+      } catch (err) {
+        console.error('Error parsing recipe JSON:', err);
+      }
+    }
+
     // Remove fields that shouldn't be passed directly to Prisma update
     delete updates.id;
     delete updates._id;
+    delete updates.recipe;
 
-    const item = await prisma.menuItem.update({
-      where: { id: targetId },
-      data: updates,
+    const item = await prisma.$transaction(async (tx) => {
+      const menuItem = await tx.menuItem.update({
+        where: { id: targetId },
+        data: updates,
+      });
+
+      if (hasRecipe) {
+        await tx.recipeItem.deleteMany({
+          where: { menu_item_id: targetId },
+        });
+
+        if (recipeData.length > 0) {
+          await tx.recipeItem.createMany({
+            data: recipeData.map((r) => ({
+              menu_item_id: targetId,
+              inventory_item_id: Number(r.inventory_item_id),
+              quantity_required: Number(r.quantity_required),
+              quantity_unit: r.quantity_unit,
+            })),
+          });
+        }
+      }
+
+      return menuItem;
     });
 
     return res.status(200).json({
@@ -226,6 +337,37 @@ const updateMenuItem = async (req, res) => {
   } catch (error) {
     console.error('Error updating menu item:', error);
     return res.status(500).json({ success: false, message: 'Error updating menu item.' });
+  }
+};
+
+// Get recipe for a specific menu item
+const getMenuItemRecipe = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const targetId = parseInt(id, 10);
+
+    const recipe = await prisma.recipeItem.findMany({
+      where: { menu_item_id: targetId },
+      include: {
+        inventory_item: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      recipe: recipe.map((item) => ({
+        ...item,
+        quantity_required: Number(item.quantity_required),
+        inventory_item: item.inventory_item ? {
+          ...item.inventory_item,
+          quantity_in_stock: Number(item.inventory_item.quantity_in_stock),
+          low_stock_threshold: Number(item.inventory_item.low_stock_threshold),
+        } : null,
+      })),
+    });
+  } catch (error) {
+    console.error('Error getting menu item recipe:', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve recipe.' });
   }
 };
 
@@ -335,4 +477,6 @@ module.exports = {
   getMealWindows,
   updateMealWindow,
   computeMealStatus,
+  getMenuItemRecipe,
+  convertToInventoryBaseUnit,
 };

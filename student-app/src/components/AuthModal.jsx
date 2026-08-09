@@ -128,9 +128,10 @@ export default function AuthModal() {
     });
 
     if (res.success) {
-      setOtpEmail(signupEmail.trim().toLowerCase());
-      setMode('otp');
-      setSuccessMsg(res.message || 'Account created successfully! An OTP has been sent to your email.');
+      setLoginEmail(signupEmail.trim().toLowerCase());
+      setLoginPassword('');
+      setMode('login');
+      setSuccessMsg(res.message || 'Account created successfully! Please log in with your credentials.');
     } else {
       setErrorMsg(res.errors && res.errors.length ? res.errors.join('. ') : res.message);
     }
@@ -155,7 +156,9 @@ export default function AuthModal() {
       return;
     }
     if (cooldown > 0) return;
-    const res = await resendOtp(otpEmail);
+    const res = mode === 'reset-password'
+      ? await forgotPassword(otpEmail)
+      : await resendOtp(otpEmail);
     if (res.success) {
       setSuccessMsg(res.message);
       setCooldown(60);
@@ -193,7 +196,10 @@ export default function AuthModal() {
 
     const res = await forgotPassword(forgotEmail);
     if (res.success) {
-      setSuccessMsg(res.message);
+      setOtpEmail(forgotEmail.trim().toLowerCase());
+      setSuccessMsg(res.message || 'A verification OTP code has been sent to your email.');
+      setMode('reset-password');
+      setCooldown(60);
     } else {
       setErrorMsg(res.message);
     }
@@ -208,15 +214,17 @@ export default function AuthModal() {
       return;
     }
 
-    if (!contextResetToken) {
-      setErrorMsg('Missing or invalid reset token.');
+    if (!otpCode || otpCode.trim().length !== 6) {
+      setErrorMsg('Please enter the 6-digit OTP code sent to your email.');
       return;
     }
 
-    const res = await resetPassword(contextResetToken, newPassword);
+    const res = await resetPassword(otpEmail, otpCode.trim(), newPassword);
     if (res.success) {
       setSuccessMsg(res.message);
-      setResetToken(null);
+      setOtpCode('');
+      setNewPassword('');
+      setConfirmPassword('');
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href);
         url.searchParams.delete('reset_token');
@@ -455,7 +463,7 @@ export default function AuthModal() {
               disabled={loading}
               className="w-full mt-2 py-2.5 bg-gradient-to-r from-brand-orange to-amber-600 hover:from-amber-600 hover:to-brand-orange text-white font-bold rounded-2xl text-xs shadow-warm transition-all flex items-center justify-center gap-2"
             >
-              {loading ? 'Creating Account...' : 'Continue to OTP Verification'}
+              {loading ? 'Creating Account...' : 'Create New Account'}
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -498,9 +506,29 @@ export default function AuthModal() {
           </form>
         )}
 
-        {/* Form: RESET PASSWORD (FROM EMAIL TOKEN) */}
+        {/* Form: RESET PASSWORD WITH OTP */}
         {mode === 'reset-password' && (
           <form onSubmit={handleResetPasswordSubmit} className="space-y-3.5">
+            <p className="text-xs text-stone-600 text-center mb-2">
+              Enter the 6-digit OTP sent to <strong className="text-brand-dark font-bold">{otpEmail}</strong> along with your new password.
+            </p>
+
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">6-Digit OTP Code</label>
+              <div className="relative">
+                <KeyRound className="absolute left-3.5 top-3.5 w-4 h-4 text-stone-400" />
+                <input
+                  type="text"
+                  required
+                  maxLength={6}
+                  placeholder="123456"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white outline-none font-medium tracking-[0.1em]"
+                />
+              </div>
+            </div>
+
             <div>
               <label className="block text-xs font-bold text-stone-700 mb-1">New Password</label>
               <div className="relative">
@@ -554,9 +582,27 @@ export default function AuthModal() {
               disabled={loading}
               className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl text-sm shadow-md transition-all flex items-center justify-center gap-2"
             >
-              {loading ? 'Updating Password...' : 'Set New Password'}
+              {loading ? 'Updating Password...' : 'Reset Password'}
               <Sparkles className="w-4 h-4" />
             </button>
+
+            <div className="flex items-center justify-between text-xs pt-1 px-1">
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={loading || cooldown > 0}
+                className="font-bold text-brand-orange hover:underline focus:outline-none disabled:opacity-50 disabled:no-underline"
+              >
+                {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend OTP Code'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMode('login'); resetFormAlerts(); }}
+                className="font-bold text-stone-500 hover:text-brand-dark transition-colors"
+              >
+                ← Back to Sign In
+              </button>
+            </div>
           </form>
         )}
 

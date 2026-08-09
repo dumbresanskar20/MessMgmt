@@ -14,6 +14,7 @@ const createStaffSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters'),
   email: z.string().email('Invalid email address'),
   role: z.enum(['super_admin', 'staff']).default('staff'),
+  password: z.string().min(6, 'Password must be at least 6 characters').optional().or(z.literal('')),
 });
 
 const setPasswordSchema = z.object({
@@ -106,7 +107,7 @@ const createStaffAccount = async (req, res) => {
       });
     }
 
-    const { username, email, role } = parseResult.data;
+    const { username, email, role, password } = parseResult.data;
     const cleanEmail = email.toLowerCase().trim();
     const cleanUsername = username.trim();
 
@@ -117,33 +118,47 @@ const createStaffAccount = async (req, res) => {
       return res.status(400).json({ success: false, message: 'An admin user with this username or email already exists.' });
     }
 
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    const dummyPasswordHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
+    let passwordHash;
+    let isVerified = false;
+    let verificationToken = null;
+
+    if (password && password.trim().length >= 6) {
+      passwordHash = await bcrypt.hash(password.trim(), 10);
+      isVerified = true;
+    } else {
+      verificationToken = crypto.randomBytes(32).toString('hex');
+      passwordHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
+    }
 
     const newAdmin = await prisma.adminUser.create({
       data: {
         username: cleanUsername,
         email: cleanEmail,
-        password_hash: dummyPasswordHash,
+        password_hash: passwordHash,
         role,
         is_active: true,
-        is_verified: false,
+        is_verified: isVerified,
         verification_token: verificationToken,
         created_by_id: req.admin.id,
       },
     });
 
-    const adminAppUrl = (process.env.FRONTEND_ADMIN_URL || 'http://localhost:5174').replace(/\/+$/, '');
-    const inviteLink = `${adminAppUrl}/set-password?token=${verificationToken}`;
+    let inviteLink = '';
+    if (!isVerified) {
+      const adminAppUrl = (process.env.FRONTEND_ADMIN_URL || 'http://localhost:5174').replace(/\/+$/, '');
+      inviteLink = `${adminAppUrl}/set-password?token=${verificationToken}`;
 
-    // Send invitation email in the background to prevent response blocking/timeouts
-    sendAdminInvitation(cleanEmail, cleanUsername, inviteLink).catch((err) => {
-      console.warn('[Admin Invite] Email send warning:', err.message);
-    });
+      // Send invitation email in the background to prevent response blocking/timeouts
+      sendAdminInvitation(cleanEmail, cleanUsername, inviteLink).catch((err) => {
+        console.warn('[Admin Invite] Email send warning:', err.message);
+      });
+    }
 
     return res.status(201).json({
       success: true,
-      message: `Staff account for ${cleanUsername} created! Invitation link dispatched.`,
+      message: isVerified
+        ? `Account for ${cleanUsername} created successfully with password set!`
+        : `Staff account for ${cleanUsername} created! Invitation link dispatched.`,
       inviteLink,
       account: {
         id: newAdmin.id,
@@ -151,6 +166,7 @@ const createStaffAccount = async (req, res) => {
         username: newAdmin.username,
         email: newAdmin.email,
         role: newAdmin.role,
+        is_verified: newAdmin.is_verified,
         created_by: req.admin.username,
       },
     });

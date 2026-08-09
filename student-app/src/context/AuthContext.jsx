@@ -135,16 +135,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const resetPassword = async (resetToken, newPassword) => {
+  const resetPassword = async (email, otpCode, newPassword) => {
     setLoading(true);
     try {
       const response = await api.post('/auth/student/reset-password', {
-        token: resetToken,
+        email,
+        otp_code: otpCode,
         password: newPassword,
       });
       return { success: true, message: response.data.message };
     } catch (error) {
-      const msg = error.response?.data?.message || 'Password reset failed. Token may have expired.';
+      const msg = error.response?.data?.message || 'Password reset failed. OTP may have expired or is invalid.';
       return { success: false, message: msg };
     } finally {
       setLoading(false);

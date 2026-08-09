@@ -104,6 +104,7 @@ app.use(['/api/auth/admin', '/auth/admin'], require('./routes/adminAuthRoutes'))
 app.use(['/api/owner', '/owner'], require('./routes/ownerRoutes'));
 app.use(['/api/menu', '/menu', '/api/admin/menu-items', '/admin/menu-items'], apiLimiter, require('./routes/menuRoutes'));
 app.use(['/api/orders', '/orders', '/api/admin/orders', '/admin/orders', '/api/admin/income', '/admin/income'], apiLimiter, require('./routes/orderRoutes'));
+app.use(['/api/inventory', '/inventory'], apiLimiter, require('./routes/inventoryRoutes'));
 
 // Developer Panel endpoints
 app.use('/api/developer', require('./developer/routes/devRoutes'));
@@ -155,3 +156,4 @@ connectDB().then(() => {
     console.log(`==================================================\n`);
   });
 });
+// Watcher reload trigger comment

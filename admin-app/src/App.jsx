@@ -12,6 +12,7 @@ import SubscriptionModal from './components/SubscriptionModal';
 import { useAdminAuth } from './context/AdminAuthContext';
 
 import OwnerDashboard from './components/OwnerDashboard';
+import InventoryManagement from './components/InventoryManagement';
 
 export default function App() {
   const {
@@ -27,6 +28,13 @@ export default function App() {
   } = useAdminAuth();
   const [activeTab, setActiveTab] = useState('kitchen');
   const [renewModalOpen, setRenewModalOpen] = useState(false);
+
+  // Force active tab to kitchen for kitchen staff upon login/session switch
+  React.useEffect(() => {
+    if (isAuthenticated && !isSuperAdmin) {
+      setActiveTab('kitchen');
+    }
+  }, [isAuthenticated, isSuperAdmin]);
 
   const isOwnerPath = typeof window !== 'undefined' && window.location.pathname === '/owner';
 
@@ -121,9 +129,10 @@ export default function App() {
       <main className="flex-1 overflow-y-auto min-w-0">
         {activeTab === 'kitchen' && <KitchenScreen />}
 
-        {activeTab === 'history' && <OrderHistoryScreen />}
-        {activeTab === 'menu' && <MenuManagement />}
-        {activeTab === 'timings' && <MealTimings />}
+        {activeTab === 'history' && isSuperAdmin && <OrderHistoryScreen />}
+        {activeTab === 'menu' && isSuperAdmin && <MenuManagement />}
+        {activeTab === 'inventory' && isSuperAdmin && <InventoryManagement />}
+        {activeTab === 'timings' && isSuperAdmin && <MealTimings />}
         {activeTab === 'staff' && isSuperAdmin && <StaffManagement />}
       </main>
 
