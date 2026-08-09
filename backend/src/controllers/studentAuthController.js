@@ -223,10 +223,12 @@ const resendOTP = async (req, res) => {
       },
     });
 
-    // Send OTP email in the background to prevent response blocking/timeouts
-    sendOTP(cleanEmail, otpCode).catch((err) => {
-      console.warn('[ResendOTP] Background OTP send warning:', err.message);
-    });
+    // Await email sending to prevent Vercel serverless function termination before complete
+    try {
+      await sendOTP(cleanEmail, otpCode);
+    } catch (err) {
+      console.warn('[ResendOTP] Email send warning:', err.message);
+    }
 
     return res.status(200).json({
       success: true,
@@ -301,10 +303,12 @@ const loginStudent = async (req, res) => {
         },
       });
 
-      // Send OTP email in the background to prevent response blocking/timeouts
-      sendOTP(cleanEmail, otpCode).catch((err) => {
-        console.warn('[Login OTP] Background OTP send warning:', err.message);
-      });
+      // Await email sending to prevent Vercel serverless function termination before complete
+      try {
+        await sendOTP(cleanEmail, otpCode);
+      } catch (err) {
+        console.warn('[Login OTP] Email send warning:', err.message);
+      }
 
       return res.status(401).json({
         success: false,
@@ -370,10 +374,12 @@ const forgotPassword = async (req, res) => {
         },
       });
 
-      // Send reset OTP in the background to prevent response blocking/timeouts
-      sendForgotPasswordOTP(cleanEmail, otpCode).catch((err) => {
-        console.warn('[Forgot Password] Background OTP send warning:', err.message);
-      });
+      // Await email sending to prevent Vercel serverless function termination before complete
+      try {
+        await sendForgotPasswordOTP(cleanEmail, otpCode);
+      } catch (err) {
+        console.warn('[Forgot Password] Email send warning:', err.message);
+      }
     }
 
     // Always respond generically to prevent email enumeration

@@ -148,10 +148,12 @@ const createStaffAccount = async (req, res) => {
       const adminAppUrl = (process.env.FRONTEND_ADMIN_URL || 'http://localhost:5174').replace(/\/+$/, '');
       inviteLink = `${adminAppUrl}/set-password?token=${verificationToken}`;
 
-      // Send invitation email in the background to prevent response blocking/timeouts
-      sendAdminInvitation(cleanEmail, cleanUsername, inviteLink).catch((err) => {
+      // Await email sending to prevent Vercel serverless function termination before complete
+      try {
+        await sendAdminInvitation(cleanEmail, cleanUsername, inviteLink);
+      } catch (err) {
         console.warn('[Admin Invite] Email send warning:', err.message);
-      });
+      }
     }
 
     return res.status(201).json({
