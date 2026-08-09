@@ -15,7 +15,6 @@ export default function KitchenScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [todayIncome, setTodayIncome] = useState(null);
   const [renewModalOpen, setRenewModalOpen] = useState(false);
-  const [printVerifyOrder, setPrintVerifyOrder] = useState(null);
   
   // Summary counts state
   const [orderCounts, setOrderCounts] = useState({
@@ -165,25 +164,7 @@ export default function KitchenScreen() {
       setOrderCounts(previousCounts);
       alert('Failed to update status. Please check your network connection.');
     }
-  };  // Listen to print window completion to show the manual confirmation modal
-  useEffect(() => {
-    const handlePrintMessage = (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data && event.data.type === 'SHOW_PRINT_CONFIRMATION') {
-        const orderId = event.data.orderId;
-        if (orderId) {
-          const targetOrder = orders.find((o) => o._id === orderId || o.id === orderId);
-          if (targetOrder) {
-            setPrintVerifyOrder(targetOrder);
-          }
-        }
-      }
-    };
-    window.addEventListener('message', handlePrintMessage);
-    return () => {
-      window.removeEventListener('message', handlePrintMessage);
-    };
-  }, [orders]);
+  };
   const printReceipt = (order) => {
     const studentName = order.student_id?.name || order.student_name || 'Student';
     const mealType = order.meal_type.toUpperCase();
@@ -252,13 +233,8 @@ export default function KitchenScreen() {
           <script>
             window.onload = function() {
               window.print();
-            };
-            window.onafterprint = function() {
-              if (window.opener && !window.opener.closed) {
-                window.opener.postMessage({ type: 'SHOW_PRINT_CONFIRMATION', orderId: '${order._id || order.id}' }, window.location.origin);
-              }
               window.close();
-            };
+            }
           </script>
         </body>
       </html>
@@ -719,14 +695,21 @@ export default function KitchenScreen() {
                     </div>
                   </div>
 
-                  {/* Right Action: Big Touch-Friendly PRINT RECEIPT Button */}
-                  <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                  {/* Right Action: Separate Touch-Friendly PRINT and DELIVER Buttons */}
+                  <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center w-full sm:w-auto">
                     <button
-                      onClick={() => handlePrintAndDeliver(ord)}
-                      className="px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs rounded-2xl shadow-md transition-all flex items-center gap-2 min-w-[150px] justify-center cursor-pointer"
+                      onClick={() => printReceipt(ord)}
+                      className="flex-1 sm:flex-initial px-4 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-2xl border border-slate-200 transition-all flex items-center gap-1.5 min-w-[100px] justify-center cursor-pointer"
                     >
-                      <Printer className="w-4 h-4 stroke-[3]" />
-                      <span>PRINT RECEIPT</span>
+                      <Printer className="w-4 h-4 text-slate-500" />
+                      <span>PRINT</span>
+                    </button>
+                    <button
+                      onClick={() => handleMarkDelivered(ord._id || ord.id)}
+                      className="flex-1 sm:flex-initial px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs rounded-2xl shadow-md transition-all flex items-center gap-1.5 min-w-[110px] justify-center cursor-pointer"
+                    >
+                      <Check className="w-4 h-4 stroke-[3]" />
+                      <span>DELIVER</span>
                     </button>
                   </div>
                 </div>
@@ -748,41 +731,6 @@ export default function KitchenScreen() {
         }}
       />
 
-      {/* PRINT VERIFICATION MODAL */}
-      {printVerifyOrder && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md bg-white rounded-3xl p-6 border border-slate-100 shadow-2xl animate-in zoom-in-95">
-            <div className="text-center">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl mx-auto mb-4">
-                🖨️
-              </div>
-              <h3 className="text-lg font-black text-slate-900 tracking-tight">Verify Print/Save Status</h3>
-              <p className="text-sm text-slate-500 font-medium mt-2 leading-relaxed">
-                Did the receipt print or save successfully?
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 mt-6">
-              <button
-                onClick={async () => {
-                  const orderId = printVerifyOrder._id || printVerifyOrder.id;
-                  setPrintVerifyOrder(null);
-                  await handleMarkDelivered(orderId);
-                }}
-                className="py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black rounded-2xl shadow-md transition-all cursor-pointer text-center"
-              >
-                Yes — Mark Delivered
-              </button>
-              <button
-                onClick={() => setPrintVerifyOrder(null)}
-                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-xs font-black rounded-2xl transition-all cursor-pointer text-center"
-              >
-                No — Keep Placed
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
