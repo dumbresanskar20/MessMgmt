@@ -756,9 +756,9 @@ export default function KitchenScreen() {
               <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl mx-auto mb-4">
                 🖨️
               </div>
-              <h3 className="text-lg font-black text-slate-900 tracking-tight">Verify Print Success</h3>
+              <h3 className="text-lg font-black text-slate-900 tracking-tight">Verify Print/Save Status</h3>
               <p className="text-sm text-slate-500 font-medium mt-2 leading-relaxed">
-                Did the receipt for Token <strong className="text-slate-800 font-bold">{printVerifyOrder.token_number || 'T-00'}</strong> print successfully?
+                Did the receipt print or save successfully?
               </p>
             </div>
 
@@ -771,13 +771,13 @@ export default function KitchenScreen() {
                 }}
                 className="py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black rounded-2xl shadow-md transition-all cursor-pointer text-center"
               >
-                Yes, Mark Delivered
+                Yes — Mark Delivered
               </button>
               <button
                 onClick={() => setPrintVerifyOrder(null)}
                 className="py-3 px-4 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-xs font-black rounded-2xl transition-all cursor-pointer text-center"
               >
-                No, Keep Placed
+                No — Keep Placed
               </button>
             </div>
           </div>
