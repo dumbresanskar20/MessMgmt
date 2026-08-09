@@ -15,6 +15,7 @@ export default function KitchenScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [todayIncome, setTodayIncome] = useState(null);
   const [renewModalOpen, setRenewModalOpen] = useState(false);
+  const [printVerifyOrder, setPrintVerifyOrder] = useState(null);
   
   // Summary counts state
   const [orderCounts, setOrderCounts] = useState({
@@ -166,22 +167,7 @@ export default function KitchenScreen() {
     }
   };
 
-  // Listen to print completion message from the receipt window
-  useEffect(() => {
-    const handlePrintMessage = (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data && event.data.type === 'PRINT_COMPLETED') {
-        const orderId = event.data.orderId;
-        if (orderId) {
-          handleMarkDelivered(orderId);
-        }
-      }
-    };
-    window.addEventListener('message', handlePrintMessage);
-    return () => {
-      window.removeEventListener('message', handlePrintMessage);
-    };
-  }, [handleMarkDelivered]);
+
 
   const printReceipt = (order) => {
     const studentName = order.student_id?.name || order.student_name || 'Student';
@@ -251,13 +237,8 @@ export default function KitchenScreen() {
           <script>
             window.onload = function() {
               window.print();
-            };
-            window.onafterprint = function() {
-              if (window.opener && !window.opener.closed) {
-                window.opener.postMessage({ type: 'PRINT_COMPLETED', orderId: '${order._id || order.id}' }, window.location.origin);
-              }
               window.close();
-            };
+            }
           </script>
         </body>
       </html>
@@ -267,6 +248,7 @@ export default function KitchenScreen() {
 
   const handlePrintAndDeliver = (order) => {
     printReceipt(order);
+    setPrintVerifyOrder(order);
   };
 
   // Filter active tokens (exclude delivered / cancelled)
@@ -746,6 +728,42 @@ export default function KitchenScreen() {
           fetchSubscriptionStatus();
         }}
       />
+
+      {/* PRINT VERIFICATION MODAL */}
+      {printVerifyOrder && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 border border-slate-100 shadow-2xl animate-in zoom-in-95">
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl mx-auto mb-4">
+                🖨️
+              </div>
+              <h3 className="text-lg font-black text-slate-900 tracking-tight">Verify Print Success</h3>
+              <p className="text-sm text-slate-500 font-medium mt-2 leading-relaxed">
+                Did the receipt for Token <strong className="text-slate-800 font-bold">{printVerifyOrder.token_number || 'T-00'}</strong> print successfully?
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mt-6">
+              <button
+                onClick={async () => {
+                  const orderId = printVerifyOrder._id || printVerifyOrder.id;
+                  setPrintVerifyOrder(null);
+                  await handleMarkDelivered(orderId);
+                }}
+                className="py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black rounded-2xl shadow-md transition-all cursor-pointer text-center"
+              >
+                Yes, Mark Delivered
+              </button>
+              <button
+                onClick={() => setPrintVerifyOrder(null)}
+                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-xs font-black rounded-2xl transition-all cursor-pointer text-center"
+              >
+                No, Keep Placed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
