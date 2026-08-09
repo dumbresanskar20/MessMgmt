@@ -64,6 +64,10 @@ const sendViaBrevo = async (to, subject, html, text) => {
     return null;
   }
 
+  if (BREVO_API_KEY.startsWith('xsmtpsib-')) {
+    console.warn('[Brevo Service] WARNING: The BREVO_API_KEY starts with "xsmtpsib-", which indicates it is an SMTP Key (password) instead of a REST API Key. The REST API requires a REST API Key (prefixed with "xkeysib-"). Please generate one in Brevo -> SMTP & API -> API Keys.');
+  }
+
   try {
     let senderEmail = 'dumbresanskar06@gmail.com';
     const envFrom = process.env.EMAIL_FROM;
