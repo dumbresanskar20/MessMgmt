@@ -79,6 +79,20 @@ export default function AuthModal() {
     setSuccessMsg('');
   };
 
+  const clearFormFieldsOnly = () => {
+    setLoginEmail('');
+    setLoginPassword('');
+    setSignupName('');
+    setSignupEmail('');
+    setSignupRollNo('');
+    setSignupPassword('');
+    setOtpCode('');
+    setForgotEmail('');
+    setOldPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+  };
+
   // Sync mode from context when modal opens or mode changes
   useEffect(() => {
     if (authModalMode) {
@@ -90,6 +104,11 @@ export default function AuthModal() {
   useEffect(() => {
     resetFormInputs();
   }, [authModalOpen]);
+
+  // Clear inputs when mode changes (keep fields empty)
+  useEffect(() => {
+    clearFormFieldsOnly();
+  }, [mode]);
 
   if (!authModalOpen) return null;
 
@@ -128,8 +147,7 @@ export default function AuthModal() {
     });
 
     if (res.success) {
-      setLoginEmail(signupEmail.trim().toLowerCase());
-      setLoginPassword('');
+      clearFormFieldsOnly();
       setMode('login');
       setSuccessMsg(res.message || 'Account created successfully! Please log in with your credentials.');
     } else {
@@ -396,7 +414,7 @@ export default function AuthModal() {
                 <input
                   type="text"
                   required
-                  placeholder="Sanskar Dumbre"
+                  placeholder="Enter your name"
                   value={signupName}
                   onChange={(e) => setSignupName(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-orange focus:bg-white outline-none font-medium"
@@ -411,7 +429,7 @@ export default function AuthModal() {
                 <input
                   type="text"
                   required
-                  placeholder="2026-CS-042"
+                  placeholder="Enter 5 digit number"
                   value={signupRollNo}
                   onChange={(e) => setSignupRollNo(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-orange focus:bg-white outline-none font-medium"
@@ -521,7 +539,7 @@ export default function AuthModal() {
                   type="text"
                   required
                   maxLength={6}
-                  placeholder="123456"
+                  placeholder="Enter 6 digit OTP"
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-xs sm:text-sm focus:ring-2 focus:ring-brand-orange focus:bg-white outline-none font-medium tracking-[0.1em]"
@@ -620,7 +638,7 @@ export default function AuthModal() {
                 type="text"
                 required
                 maxLength={6}
-                placeholder="123456"
+                placeholder="Enter 6 digit OTP"
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value)}
                 className="w-full pl-10 pr-3 py-2.5 bg-amber-50/80 border border-amber-300 rounded-2xl text-center font-display font-extrabold text-xl sm:text-2xl tracking-[0.3em] text-brand-terracotta focus:ring-2 focus:ring-brand-orange outline-none"
