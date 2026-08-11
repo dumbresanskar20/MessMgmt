@@ -23,7 +23,7 @@ const shapeLog = (log) => {
 // 1. Create Inventory Item
 const createInventoryItem = async (req, res) => {
   try {
-    const { name, unit, quantity_in_stock, low_stock_threshold } = req.body;
+    const { name, unit, quantity_in_stock, low_stock_threshold, category } = req.body;
 
     if (!name || !unit || quantity_in_stock === undefined || low_stock_threshold === undefined) {
       return res.status(400).json({
@@ -37,6 +37,15 @@ const createInventoryItem = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: `Invalid unit. Allowed units: ${validUnits.join(', ')}`,
+      });
+    }
+
+    const validCategories = ['vegetables', 'grains_pulses', 'dairy_proteins', 'oil_spices', 'snack_essentials', 'beverages', 'other'];
+    const itemCategory = category || 'other';
+    if (!validCategories.includes(itemCategory)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid category. Allowed categories: ${validCategories.join(', ')}`,
       });
     }
 
@@ -67,6 +76,7 @@ const createInventoryItem = async (req, res) => {
         unit,
         quantity_in_stock: Number(quantity_in_stock),
         low_stock_threshold: Number(low_stock_threshold),
+        category: itemCategory,
         is_active: true,
       },
     });
@@ -155,12 +165,20 @@ const updateInventoryItem = async (req, res) => {
       }
     }
 
+    if (updates.category !== undefined) {
+      const validCategories = ['vegetables', 'grains_pulses', 'dairy_proteins', 'oil_spices', 'snack_essentials', 'beverages', 'other'];
+      if (!validCategories.includes(updates.category)) {
+        return res.status(400).json({ success: false, message: 'Invalid category.' });
+      }
+    }
+
     // Prepare prisma update data
     const data = {};
     if (updates.name !== undefined) data.name = updates.name.trim();
     if (updates.unit !== undefined) data.unit = updates.unit;
     if (updates.quantity_in_stock !== undefined) data.quantity_in_stock = Number(updates.quantity_in_stock);
     if (updates.low_stock_threshold !== undefined) data.low_stock_threshold = Number(updates.low_stock_threshold);
+    if (updates.category !== undefined) data.category = updates.category;
     if (updates.is_active !== undefined) {
       if (typeof updates.is_active === 'string') {
         data.is_active = updates.is_active === 'true';
@@ -200,7 +218,7 @@ const updateInventoryItem = async (req, res) => {
   }
 };
 
-// 4. Soft Delete (is_active: false)
+// 4. Delete Item from Database (Hard Delete)
 const deleteInventoryItem = async (req, res) => {
   try {
     const { id } = req.params;
@@ -211,14 +229,13 @@ const deleteInventoryItem = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Inventory item not found.' });
     }
 
-    await prisma.inventoryItem.update({
+    await prisma.inventoryItem.delete({
       where: { id: targetId },
-      data: { is_active: false },
     });
 
     return res.status(200).json({
       success: true,
-      message: 'Inventory item soft-deleted successfully (marked inactive).',
+      message: 'Inventory item deleted successfully from database.',
     });
   } catch (error) {
     console.error('Error deleting inventory item:', error);

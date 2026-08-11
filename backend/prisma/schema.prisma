@@ -253,6 +253,7 @@ model InventoryItem {
   unit                InventoryUnit
   quantity_in_stock   Decimal        @db.Decimal(10, 3)
   low_stock_threshold Decimal        @db.Decimal(10, 3)
+  category            String         @default("other")
   is_active           Boolean        @default(true)
   created_at          DateTime       @default(now())
   updated_at          DateTime       @updatedAt

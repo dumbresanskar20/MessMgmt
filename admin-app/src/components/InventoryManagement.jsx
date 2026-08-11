@@ -5,6 +5,16 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 
+const PREDEFINED_CATEGORIES = [
+  { id: 'vegetables', name: 'Vegetables' },
+  { id: 'grains_pulses', name: 'Grains/Flours/Pulses' },
+  { id: 'dairy_proteins', name: 'Dairy & Proteins' },
+  { id: 'oil_spices', name: 'Oil/Spices/Condiments' },
+  { id: 'snack_essentials', name: 'Snack/Fried Item Essentials' },
+  { id: 'beverages', name: 'Beverages' },
+  { id: 'other', name: 'Other' }
+];
+
 export default function InventoryManagement() {
   // Data States
   const [items, setItems] = useState([]);
@@ -35,9 +45,12 @@ export default function InventoryManagement() {
   const [editingItem, setEditingItem] = useState(null);
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('kg');
+  const [category, setCategory] = useState('vegetables');
   const [quantityInStock, setQuantityInStock] = useState('');
   const [lowStockThreshold, setLowStockThreshold] = useState('');
   const [isActive, setIsActive] = useState(true);
+
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
   const [restockingItem, setRestockingItem] = useState(null);
   const [restockQuantity, setRestockQuantity] = useState('');
@@ -48,6 +61,40 @@ export default function InventoryManagement() {
 
   const [saving, setSaving] = useState(false);
   const [notification, setNotification] = useState(null);
+
+  // Get all unique categories in items, preserving predefined ones first
+  const getCategoriesList = () => {
+    const list = [...PREDEFINED_CATEGORIES];
+    items.forEach(item => {
+      const catId = item.category || 'other';
+      if (!list.some(c => c.id === catId)) {
+        const name = catId
+          .split('_')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+        list.push({ id: catId, name });
+      }
+    });
+    return list;
+  };
+
+  // Group items by category
+  const getGroupedItems = () => {
+    const grouped = {};
+    PREDEFINED_CATEGORIES.forEach(cat => {
+      grouped[cat.id] = [];
+    });
+
+    items.forEach(item => {
+      const cat = item.category || 'other';
+      if (!grouped[cat]) {
+        grouped[cat] = [];
+      }
+      grouped[cat].push(item);
+    });
+
+    return grouped;
+  };
 
   // Hooks
   useEffect(() => {
@@ -80,18 +127,18 @@ export default function InventoryManagement() {
     }
   };
 
-  // 2. Fetch Paginated & Searchable Items
+  // 2. Fetch Paginated & Searchable Items (Fetched with limit=1000 for category grouping)
   const fetchItems = async () => {
     setLoadingItems(true);
     try {
-      let url = `/inventory?page=${page}&limit=${limit}`;
+      let url = `/inventory?limit=1000`;
       if (search.trim()) url += `&search=${encodeURIComponent(search.trim())}`;
       if (filterActive !== 'all') url += `&is_active=${filterActive === 'active'}`;
       
       const res = await api.get(url);
       if (res.data.success) {
-        setItems(res.data.items);
-        setPages(res.data.pages || 1);
+        setItems(res.data.items || []);
+        setPages(1);
       }
     } catch (err) {
       console.error('Error loading inventory items:', err);
@@ -124,6 +171,7 @@ export default function InventoryManagement() {
     setEditingItem(null);
     setName('');
     setUnit('kg');
+    setCategory('vegetables');
     setQuantityInStock('0');
     setLowStockThreshold('1');
     setIsActive(true);
@@ -135,6 +183,7 @@ export default function InventoryManagement() {
     setEditingItem(item);
     setName(item.name);
     setUnit(item.unit);
+    setCategory(item.category || 'other');
     setQuantityInStock(item.quantity_in_stock.toString());
     setLowStockThreshold(item.low_stock_threshold.toString());
     setIsActive(item.is_active);
@@ -151,7 +200,7 @@ export default function InventoryManagement() {
   // 7. Save Item (Create or Update)
   const handleSaveItem = async (e) => {
     e.preventDefault();
-    if (!name.trim() || quantityInStock === '' || lowStockThreshold === '') {
+    if (!name.trim() || quantityInStock === '' || lowStockThreshold === '' || !category) {
       showToast('Please check and fill out all fields.', 'error');
       return;
     }
@@ -163,6 +212,7 @@ export default function InventoryManagement() {
       quantity_in_stock: parseFloat(quantityInStock),
       low_stock_threshold: parseFloat(lowStockThreshold),
       is_active: isActive,
+      category,
     };
 
     try {
@@ -208,17 +258,17 @@ export default function InventoryManagement() {
     }
   };
 
-  // 9. Soft Delete Item (Deactivate)
+  // 9. Hard Delete Item from Database
   const handleDeleteItem = async (item) => {
-    if (!window.confirm(`Are you sure you want to deactivate '${item.name}'? It will be set to Inactive status.`)) return;
+    if (!window.confirm(`Are you sure you want to permanently delete '${item.name}'? This will remove its stock logs and recipe mappings.`)) return;
 
     try {
       await api.delete(`/inventory/${item.id}`);
-      showToast(`Item '${item.name}' deactivated successfully.`);
+      showToast(`Item '${item.name}' deleted successfully.`);
       fetchItems();
       fetchSummary();
     } catch (err) {
-      showToast('Error deactivating item.', 'error');
+      showToast('Error deleting item.', 'error');
     }
   };
 
@@ -445,29 +495,54 @@ export default function InventoryManagement() {
             />
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
-            {[
-              { id: 'all', label: 'All Items' },
-              { id: 'active', label: 'Active Only' },
-              { id: 'inactive', label: 'Inactive' }
-            ].map(opt => (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex gap-2">
               <button
-                key={opt.id}
                 onClick={() => {
-                  setFilterActive(opt.id);
-                  setPage(1);
+                  const collapsed = {};
+                  getCategoriesList().forEach(c => {
+                    collapsed[c.id] = true;
+                  });
+                  setCollapsedCategories(collapsed);
                 }}
-                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${
-                  filterActive === opt.id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'
-                }`}
+                className="px-3.5 py-1.5 rounded-xl border text-[11px] font-extrabold text-slate-700 bg-white hover:bg-slate-50 transition shadow-sm cursor-pointer"
               >
-                {opt.label}
+                Collapse All
               </button>
-            ))}
+              <button
+                onClick={() => {
+                  setCollapsedCategories({});
+                }}
+                className="px-3.5 py-1.5 rounded-xl border text-[11px] font-extrabold text-slate-700 bg-white hover:bg-slate-50 transition shadow-sm cursor-pointer"
+              >
+                Expand All
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200 font-semibold">
+              {[
+                { id: 'all', label: 'All Items' },
+                { id: 'active', label: 'Active Only' },
+                { id: 'inactive', label: 'Inactive' }
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => {
+                    setFilterActive(opt.id);
+                    setPage(1);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition ${
+                    filterActive === opt.id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Stock Catalog Table */}
+        {/* Stock Catalog Grouped by Category */}
         {loadingItems ? (
           <div className="text-center py-16 text-slate-400 font-bold">Retrieving inventory items...</div>
         ) : items.length === 0 ? (
@@ -476,118 +551,163 @@ export default function InventoryManagement() {
             <p className="text-xs text-slate-400 mt-1">Register new raw grocery materials to populate catalog.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-400 text-[10px] uppercase font-extrabold tracking-wider">
-                  <th className="pb-3 pl-2">ID Code</th>
-                  <th className="pb-3">Name</th>
-                  <th className="pb-3">Stock Level</th>
-                  <th className="pb-3">Unit</th>
-                  <th className="pb-3">Alert Threshold</th>
-                  <th className="pb-3">Status</th>
-                  <th className="pb-3 text-right pr-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="text-xs divide-y divide-slate-100 font-medium">
-                {items.map((item) => {
-                  const qty = Number(item.quantity_in_stock);
-                  const isLow = qty <= Number(item.low_stock_threshold);
-                  const isOutOfStock = qty <= 0;
+          <div className="space-y-4">
+            {(() => {
+              const categoriesList = getCategoriesList();
+              const groupedItems = getGroupedItems();
+              const isSearching = search.trim() !== '';
 
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-50/50 transition">
-                      <td className="py-3.5 pl-2 font-mono font-bold text-slate-500">
-                        {item.unique_inventory_id}
-                      </td>
-                      <td className="py-3.5 font-bold text-slate-800">
-                        {item.name}
-                      </td>
-                      <td className="py-3.5">
-                        <span className={`font-black text-sm ${
-                          isOutOfStock ? 'text-red-600' : isLow ? 'text-amber-500' : 'text-slate-800'
-                        }`}>
-                          {qty}
+              return categoriesList.map(cat => {
+                const catItems = groupedItems[cat.id] || [];
+
+                // Filter items of this category by active/inactive if not 'all'
+                const filteredCatItems = catItems.filter(item => {
+                  if (filterActive === 'active') return item.is_active;
+                  if (filterActive === 'inactive') return !item.is_active;
+                  return true;
+                });
+
+                if (isSearching && filteredCatItems.length === 0) {
+                  return null;
+                }
+
+                const isCollapsed = isSearching ? false : !!collapsedCategories[cat.id];
+
+                return (
+                  <div key={cat.id} className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden transition-all duration-200">
+                    {/* Category Header */}
+                    <button
+                      onClick={() => {
+                        if (!isSearching) {
+                          setCollapsedCategories(prev => ({
+                            ...prev,
+                            [cat.id]: !prev[cat.id]
+                          }));
+                        }
+                      }}
+                      className={`w-full flex items-center justify-between p-4 bg-slate-50/70 border-b border-slate-100 text-left font-black transition ${
+                        isSearching ? 'cursor-default' : 'hover:bg-slate-100/60 cursor-pointer'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-xl">
+                          {cat.id === 'vegetables' && '🥗'}
+                          {cat.id === 'grains_pulses' && '🌾'}
+                          {cat.id === 'dairy_proteins' && '🥚'}
+                          {cat.id === 'oil_spices' && '🌶️'}
+                          {cat.id === 'snack_essentials' && '🍟'}
+                          {cat.id === 'beverages' && '🥤'}
+                          {cat.id === 'other' && '📦'}
+                          {!['vegetables', 'grains_pulses', 'dairy_proteins', 'oil_spices', 'snack_essentials', 'beverages', 'other'].includes(cat.id) && '🏷️'}
                         </span>
-                        {isLow && (
-                          <span className={`ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                            isOutOfStock ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {isOutOfStock ? 'Depleted' : 'Low'}
-                          </span>
+                        <span className="text-sm font-black text-slate-800 tracking-tight">{cat.name}</span>
+                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-100 font-extrabold text-[10px] px-2.5 py-0.5 rounded-full">
+                          {filteredCatItems.length} {filteredCatItems.length === 1 ? 'item' : 'items'}
+                        </span>
+                      </div>
+                      {!isSearching && (
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider bg-white px-2 py-1 rounded-lg border border-slate-200">
+                          {isCollapsed ? 'Expand' : 'Collapse'}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Category Body */}
+                    {!isCollapsed && (
+                      <div className="p-4 bg-white">
+                        {filteredCatItems.length === 0 ? (
+                          <div className="text-center py-6 text-slate-400 text-xs font-semibold">
+                            No active items in this category.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="border-b border-slate-200 text-slate-400 text-[10px] uppercase font-extrabold tracking-wider">
+                                  <th className="pb-3 pl-2">ID Code</th>
+                                  <th className="pb-3">Name</th>
+                                  <th className="pb-3">Stock Level</th>
+                                  <th className="pb-3">Unit</th>
+                                  <th className="pb-3">Alert Threshold</th>
+                                  <th className="pb-3">Status</th>
+                                  <th className="pb-3 text-right pr-2">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="text-xs divide-y divide-slate-100 font-medium">
+                                {filteredCatItems.map((item) => {
+                                  const qty = Number(item.quantity_in_stock);
+                                  const isLow = qty <= Number(item.low_stock_threshold);
+                                  const isOutOfStock = qty <= 0;
+
+                                  return (
+                                    <tr key={item.id} className="hover:bg-slate-50/50 transition">
+                                      <td className="py-3.5 pl-2 font-mono font-bold text-slate-500">
+                                        {item.unique_inventory_id}
+                                      </td>
+                                      <td className="py-3.5 font-bold text-slate-800">
+                                        {item.name}
+                                      </td>
+                                      <td className="py-3.5">
+                                        <span className={`font-black text-sm ${
+                                          isOutOfStock ? 'text-red-600' : isLow ? 'text-amber-500' : 'text-slate-800'
+                                        }`}>
+                                          {qty}
+                                        </span>
+                                        {isLow && (
+                                          <span className={`ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                            isOutOfStock ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
+                                          }`}>
+                                            {isOutOfStock ? 'Depleted' : 'Low'}
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="py-3.5 text-slate-500 font-semibold">{item.unit}</td>
+                                      <td className="py-3.5 text-slate-500">{item.low_stock_threshold} {item.unit}</td>
+                                      <td className="py-3.5">
+                                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                          item.is_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-400'
+                                        }`}>
+                                          {item.is_active ? 'Active' : 'Inactive'}
+                                        </span>
+                                      </td>
+                                      <td className="py-3.5 text-right pr-2">
+                                        <div className="inline-flex gap-1.5">
+                                          <button
+                                            onClick={() => openRestockModal(item)}
+                                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border hover:bg-slate-100 text-slate-700 font-extrabold text-[10px] transition shadow-sm cursor-pointer"
+                                          >
+                                            <Scale className="w-3.5 h-3.5" />
+                                            <span>Restock</span>
+                                          </button>
+                                          <button
+                                            onClick={() => openEditModal(item)}
+                                            className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
+                                            title="Edit"
+                                          >
+                                            <Edit2 className="w-4 h-4" />
+                                          </button>
+                                          <button
+                                            onClick={() => openLogsModal(item)}
+                                            className="p-1.5 rounded-lg text-emerald-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                                            title="Activity Logs"
+                                          >
+                                            <History className="w-4 h-4" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
                         )}
-                      </td>
-                      <td className="py-3.5 text-slate-500 font-semibold">{item.unit}</td>
-                      <td className="py-3.5 text-slate-500">{item.low_stock_threshold} {item.unit}</td>
-                      <td className="py-3.5">
-                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                          item.is_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-400'
-                        }`}>
-                          {item.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="py-3.5 text-right pr-2">
-                        <div className="inline-flex gap-1.5">
-                          <button
-                            onClick={() => openRestockModal(item)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border hover:bg-slate-100 text-slate-700 font-extrabold text-[10px] transition shadow-sm cursor-pointer"
-                          >
-                            <Scale className="w-3.5 h-3.5" />
-                            <span>Restock</span>
-                          </button>
-                          <button
-                            onClick={() => openEditModal(item)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
-                            title="Edit"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => openLogsModal(item)}
-                            className="p-1.5 rounded-lg text-emerald-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                            title="Activity Logs"
-                          >
-                            <History className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteItem(item)}
-                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
-                            title="Deactivate"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Pagination Bar */}
-        {pages > 1 && (
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-[10px] text-slate-400 font-semibold uppercase">
-              Page {page} of {pages}
-            </span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3.5 py-1.5 rounded-xl border text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
-              >
-                Previous
-              </button>
-              <button
-                onClick={() => setPage(p => Math.min(pages, p + 1))}
-                disabled={page === pages}
-                className="px-3.5 py-1.5 rounded-xl border text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
-              >
-                Next
-              </button>
-            </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
 
@@ -617,6 +737,20 @@ export default function InventoryManagement() {
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-600 outline-none font-medium"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Category</label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  required
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-600 outline-none font-medium"
+                >
+                  {PREDEFINED_CATEGORIES.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
